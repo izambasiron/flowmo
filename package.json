@@ -1,0 +1,39 @@
+{
+  "name": "flowmo",
+  "version": "0.1.0",
+  "description": "Local, zero-infrastructure prototyping engine for OutSystems-Lite workflows",
+  "type": "module",
+  "license": "MIT",
+  "author": {
+    "name": "Flowmo",
+    "email": "support@flowmo.lol"
+  },
+  "homepage": "https://flowmo.lol",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/izambasiron/flowmo"
+  },
+  "bugs": {
+    "url": "https://github.com/izambasiron/flowmo/issues"
+  },
+  "keywords": [
+    "outsystems",
+    "flowmo",
+    "pglite",
+    "postgres",
+    "prototyping",
+    "low-code"
+  ],
+  "bin": {
+    "flowmo": "./bin/flowmo.js"
+  },
+  "files": [
+    "bin",
+    "src"
+  ],
+  "dependencies": {
+    "@electric-sql/pglite": "^0.2.0",
+    "cli-table3": "^0.6.3",
+    "picocolors": "^1.1.0"
+  }
+}
