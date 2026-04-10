@@ -35,17 +35,52 @@ npx flowmo db:setup
 
 Run this any time you change your schema.
 
-### `flowmo db:seed`
+### `flowmo db:seed [file …]`
 
-Reads `database/seeds.sql` and inserts dummy data.
+Inserts seed data into the local database. Accepts an optional list of seed files to run in order.
 
 ```bash
+# Auto-discover: loads database/seeds/ directory (alphabetical) or falls back to database/seeds.sql
 npx flowmo db:seed
+
+# Explicit list — executed in the order given
+npx flowmo db:seed database/seeds/01_users.sql database/seeds/02_products.sql
 ```
 
-### `flowmo db:query <file> [params-json]`
+**Seed file resolution (no args):**
+1. `database/seeds/` directory exists → all `.sql` files, alphabetical order
+2. `database/seeds.sql` → single file fallback
 
-Executes a `.sql` or `.advance.sql` file against the local database and prints results as an ASCII table.
+Prefix files with numbers (`01_`, `02_`) to control load order when using the directory.
+
+### `flowmo db:reset [--seed [file …]]`
+
+Drops and recreates the schema (equivalent to `db:setup`), then optionally seeds.
+
+```bash
+# Recreate schema only
+npx flowmo db:reset
+
+# Recreate schema + auto-discover seeds
+npx flowmo db:reset --seed
+
+# Recreate schema + explicit seed list
+npx flowmo db:reset --seed database/seeds/01_users.sql database/seeds/02_products.sql
+```
+
+The `--seed` flag follows the same resolution rules as `db:seed` — files after `--seed` are used as-is; no files after `--seed` triggers auto-discovery.
+
+### `flowmo db:query <file|sql> [params-json]`
+
+Executes a `.sql` or `.advance.sql` file against the local database and prints results as an ASCII table. Alternatively, pass an inline SQL string directly — no file needed.
+
+**Inline SQL:**
+```bash
+npx flowmo db:query "SELECT * FROM users"
+npx flowmo db:query "SELECT COUNT(*) FROM orders WHERE is_active = 1"
+```
+
+Inline mode is param-free. For parameterised queries, use a file.
 
 **Standard SQL:**
 ```bash
@@ -90,7 +125,8 @@ A scaffolded Flowmo project looks like this:
 my-prototype/
 ├── database/
 │   ├── schema.sql          # DDL — your single source of truth
-│   ├── seeds.sql           # Dummy data for UI prototyping
+│   ├── seeds.sql           # Dummy data (single file)
+│   ├── seeds/              # OR: split seeds by table (01_users.sql, 02_products.sql …)
 │   └── queries/            # .sql and .advance.sql files
 ├── logic/                  # .flowchart.md server action flows
 ├── screens/                # .visual.html UI prototypes

@@ -66,12 +66,24 @@ export async function dbQuery(rawArgs = []) {
     }
   }
 
+  if (positional.length === 0) {
+    throw new Error('Usage: flowmo db:query <file.sql> [params-json]\n       flowmo db:query "SELECT …" (inline SQL, no params)');
+  }
+
+  // Inline SQL mode: first positional arg does not end with .sql.
+  const looksLikeFile = positional[0].endsWith('.sql');
+  if (!looksLikeFile) {
+    const inlineSql = positional.join(' ');
+    console.log(picocolors.dim(`Query: ${inlineSql}\n`));
+    const db = await getDb();
+    const result = await db.query(inlineSql, []);
+    await closeDb();
+    renderTable(result.fields, result.rows, { simple, limit });
+    return;
+  }
+
   const filePath = positional[0];
   const paramsJson = positional.length > 1 ? positional.slice(1).join(' ') : undefined;
-
-  if (!filePath) {
-    throw new Error('Usage: flowmo db:query <file> [params-json] [--limit <n>] [--simple]');
-  }
 
   const resolved = path.resolve(process.cwd(), filePath);
 

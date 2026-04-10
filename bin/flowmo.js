@@ -23,17 +23,23 @@ ${picocolors.bold('Usage:')}
   flowmo <command> [options]
 
 ${picocolors.bold('Commands:')}
-  ${picocolors.cyan('db:setup')}                          Reset and provision the local database from database/schema.sql
-  ${picocolors.cyan('db:seed')}                           Insert seed data from database/seeds.sql
-  ${picocolors.cyan('db:query')} <file> [params-json]     Execute a .sql or .advance.sql query file
-                                   ${picocolors.dim('--limit <n>')}  Max rows to show (default: 10)
-                                   ${picocolors.dim('--simple')}     Plain key: value output, no truncation
+  ${picocolors.cyan('db:setup')}                            Reset and provision the local database from database/schema.sql
+  ${picocolors.cyan('db:seed')} [file …]                    Seed from explicit file(s), database/seeds/ dir, or database/seeds.sql
+  ${picocolors.cyan('db:reset')} [--seed [file …]]          Alias for db:setup; add --seed to also run seeds
+  ${picocolors.cyan('db:query')} <file|sql> [params-json]   Execute a .sql/.advance.sql file or an inline SQL string
+                                     ${picocolors.dim('--limit <n>')}  Max rows to show (default: 10)
+                                     ${picocolors.dim('--simple')}     Plain key: value output, no truncation
 
 ${picocolors.bold('Examples:')}
   flowmo db:setup
   flowmo db:seed
+  flowmo db:seed database/seeds/01_users.sql database/seeds/02_products.sql
+  flowmo db:reset
+  flowmo db:reset --seed
+  flowmo db:reset --seed database/seeds/01_users.sql database/seeds/02_products.sql
   flowmo db:query database/queries/get_users.sql
   flowmo db:query database/queries/get_user.advance.sql '{"UserId": 1}'
+  flowmo db:query "SELECT * FROM users"
   flowmo db:query database/queries/get_users.sql --limit 25
   flowmo db:query database/queries/get_users.sql --simple
 `;
@@ -46,11 +52,13 @@ async function run() {
 
   const { dbSetup } = await import('../src/commands/db-setup.js');
   const { dbSeed } = await import('../src/commands/db-seed.js');
+  const { dbReset } = await import('../src/commands/db-reset.js');
   const { dbQuery } = await import('../src/commands/db-query.js');
 
   const commands = {
     'db:setup': () => dbSetup(),
-    'db:seed': () => dbSeed(),
+    'db:seed': () => dbSeed(args),
+    'db:reset': () => dbReset(args),
     // Join all args after the file path in case the shell splits the JSON string.
     'db:query': () => dbQuery(args),
   };
