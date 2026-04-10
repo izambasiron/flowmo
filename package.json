@@ -1,6 +1,6 @@
 {
   "name": "flowmo",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Local, zero-infrastructure prototyping engine for OutSystems-Lite workflows",
   "type": "module",
   "license": "MIT",
