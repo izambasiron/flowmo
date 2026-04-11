@@ -1,8 +1,8 @@
 # flowmo
 
-The local, zero-infrastructure prototyping engine for OutSystems-Lite workflows.
+A lightning-fast, zero-infrastructure SQL engine for AI-assisted OutSystems prototyping.
 
-Flowmo provides a lightning-fast, offline-first development environment to rapidly prototype screens, test complex SQL logic, and design workflows before ever touching an OutSystems Developer Cloud (ODC) environment.
+Flowmo gives AI agents a local offline environment to generate and validate Advanced SQL queries in milliseconds — acting as a safe sandbox before anything touches an OutSystems environment.
 
 Powered by [PGLite](https://pglite.dev/) (WASM PostgreSQL) — no containers, no servers, no cloud dependencies.
 
@@ -135,15 +135,16 @@ my-prototype/
     └── database/
 ```
 
-## The AI Bridge (ODC to Flowmo)
+## The Agentic Bridge (ODC to Flowmo)
 
-Because ODC restricts direct database access, the recommended workflow to mirror your schema locally is:
+Flowmo is built for **vibe coding**. Because ODC restricts direct database access, agents use local Flowmo projects to iterate safely:
 
-1. Open ODC Service Studio and ask **Mentor AI** to generate a PostgreSQL `CREATE TABLE` script from your data model.
-2. Paste the output into `database/schema.sql`.
-3. Run `npx flowmo db:setup`.
+1. **AI Generation**: Ask your AI assistant to generate a PostgreSQL `CREATE TABLE` and some seed data based on your ODC data model.
+2. **Instant Validation**: The agent runs `npx flowmo db:setup` and `db:seed` to provision the local PGLite database.
+3. **Query Verification**: The agent then executes `npx flowmo db:query` against `.advance.sql` files to double-check their logic.
+4. **Platform Sync**: Once the "vibe" is correct locally, you can confidently recreate the entities and queries in OutSystems Service Studio.
 
-If you have the Flowmo Copilot skills installed (bundled by `create-flowmo`), your AI assistant can generate the schema directly from a description or screenshot of your ODC data model.
+The Flowmo Agent Skills (scaffolded by `create-flowmo`) ensure your AI assistant follows OutSystems performance and syntax rules throughout this process.
 
 ## VS Code Ecosystem
 
