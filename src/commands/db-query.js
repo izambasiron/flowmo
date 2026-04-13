@@ -12,7 +12,7 @@ import { renderTable } from '../lib/table.js';
  * turning {"Key":"val"} into {Key:val}. This helper attempts to recover by
  * re-quoting bare keys and string values before parsing.
  */
-function parseJsonArg(raw) {
+export function parseJsonArg(raw) {
   if (!raw) return {};
 
   // 1. Try strict JSON first — covers correctly-quoted input.
@@ -29,13 +29,15 @@ function parseJsonArg(raw) {
       .replace(/([{,]\s*)([A-Za-z_$][A-Za-z0-9_$-]*)\s*:/g, '$1"$2":')
       // Restore empty string values stripped by cmd.exe:  "key":,  or  "key":}
       .replace(/("[\w$-]+":\s*)(,|})/g, (m, key, end) => `${key}""${end}`)
-      // Quote unquoted string values (leave numbers, booleans, null untouched)
-      .replace(/:\s*([^",{\[\]}\s][^,}\]]*?)(\s*[,}])/g, (m, val, end) => {
+      // Quote unquoted string values (leave numbers, booleans, null untouched).
+      // Use a lookahead so values can contain commas (e.g. "1,2" for multi-value params).
+      // A value ends only at `,"key":` or `}`, not at every comma.
+      .replace(/("[\w$-]+":\s*)([^",{\[\]\s][^}]*?)(?=\s*(?:,\s*"[\w$-]+"\s*:|}))/g, (m, key, val) => {
         const t = val.trim();
         if (t === 'true' || t === 'false' || t === 'null' || /^-?\d+(\.\d+)?$/.test(t)) {
           return m;
         }
-        return `:"${t}"${end}`;
+        return `${key}"${t}"`;
       });
     return JSON.parse(fixed);
   } catch {}
