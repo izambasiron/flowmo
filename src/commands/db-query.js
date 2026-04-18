@@ -3,7 +3,23 @@ import path from 'path';
 import picocolors from 'picocolors';
 import { getDb, closeDb } from '../lib/db.js';
 import { parseAdvancedSql } from '../lib/parser.js';
+import { applyO11Dialect } from '../lib/dialect-o11.js';
 import { renderTable } from '../lib/table.js';
+
+/**
+ * Reads the "flowmo".platform field from the project's package.json.
+ * Defaults to 'ODC' if the file is missing or the field is not set.
+ */
+function getProjectPlatform() {
+  const pkgPath = path.resolve(process.cwd(), 'package.json');
+  if (!fs.existsSync(pkgPath)) return 'ODC';
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+    return pkg?.flowmo?.platform ?? 'ODC';
+  } catch {
+    return 'ODC';
+  }
+}
 
 /**
  * Parse a JSON parameter string from the shell.
@@ -104,8 +120,21 @@ export async function dbQuery(rawArgs = []) {
   let params = [];
 
   if (isAdvanced) {
+    // Apply O11 T-SQL dialect pre-processor when the project platform is O11.
+    let sqlToProcess = rawSql;
+    const platform = getProjectPlatform();
+    if (platform === 'O11') {
+      const { sql: dialectSql, warnings } = applyO11Dialect(rawSql);
+      sqlToProcess = dialectSql;
+      if (warnings.length > 0) {
+        console.log(picocolors.yellow('O11 dialect warnings:'));
+        warnings.forEach((w) => console.log(picocolors.yellow(`  ⚠  ${w}`)));
+        console.log('');
+      }
+    }
+
     // Parse OutSystems syntax and map named @params to Postgres positional bindings.
-    const { sql: parsedSql, paramNames } = parseAdvancedSql(rawSql);
+    const { sql: parsedSql, paramNames } = parseAdvancedSql(sqlToProcess);
     sql = parsedSql;
 
     if (paramNames.length > 0) {

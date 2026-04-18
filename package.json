@@ -31,6 +31,10 @@
     "bin",
     "src"
   ],
+  "exports": {
+    "./src/lib/parser.js": "./src/lib/parser.js",
+    "./src/lib/dialect-o11.js": "./src/lib/dialect-o11.js"
+  },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest"
