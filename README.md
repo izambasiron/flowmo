@@ -137,12 +137,13 @@ my-prototype/
 
 ## The Agentic Bridge (ODC to Flowmo)
 
-Flowmo is built for **vibe coding**. Because ODC restricts direct database access, agents use local Flowmo projects to iterate safely:
+Flowmo is built for **vibe coding**. Local iteration gives you a tight feedback loop — no deployments, no cloud round-trips, no risk to your real data. Agents use local Flowmo projects to move fast:
 
-1. **AI Generation**: Ask your AI assistant to generate a PostgreSQL `CREATE TABLE` and some seed data based on your ODC data model.
-2. **Instant Validation**: The agent runs `npx flowmo db:setup` and `db:seed` to provision the local PGLite database.
-3. **Query Verification**: The agent then executes `npx flowmo db:query` against `.advance.sql` files to double-check their logic.
-4. **Platform Sync**: Once the "vibe" is correct locally, you can confidently recreate the entities and queries in OutSystems Service Studio.
+1. **Get the schema**: The Flowmo Forge component ([ODC](https://www.outsystems.com/forge/component-overview/24452/flowmo-odc) · [O11](https://www.outsystems.com/forge/component-overview/24446/flowmo-o11)) includes a **Schema Builder** that generates a PostgreSQL `CREATE TABLE` script from your live OutSystems entities. Copy and paste the output into your `database/schema.sql` as your starting point.
+2. **AI Generation**: Ask your AI assistant to extend the schema or generate seed data based on your app's data model.
+3. **Instant Validation**: The agent runs `npx flowmo db:setup` and `db:seed` to provision the local PGLite database.
+4. **Query Verification**: The agent then executes `npx flowmo db:query` against `.advance.sql` files to double-check their logic.
+5. **Platform Sync**: Once the "vibe" is correct locally, you can confidently recreate the entities and queries in OutSystems Service Studio.
 
 The Flowmo Agent Skills (scaffolded by `create-flowmo`) ensure your AI assistant follows OutSystems performance and syntax rules throughout this process.
 
