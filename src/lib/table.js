@@ -31,18 +31,34 @@ function truncate(str, maxLen) {
  *
  * @param {Array<{ name: string }>} fields
  * @param {Array<Record<string, unknown>>} rows
- * @param {{ simple?: boolean, limit?: number }} opts
+ * @param {{ simple?: boolean, json?: boolean, limit?: number }} opts
  */
-export function renderTable(fields, rows, { simple = false, limit = 10 } = {}) {
+export function renderTable(fields, rows, { simple = false, json = false, limit = 10 } = {}) {
   if (rows.length === 0) {
-    console.log(picocolors.dim('(0 rows)'));
+    if (json) {
+      console.log('[]');
+    } else {
+      console.log(picocolors.dim('(0 rows)'));
+    }
     return;
   }
 
   const total = rows.length;
   const displayed = rows.slice(0, limit);
 
-  if (simple) {
+  if (json) {
+    // Machine-parseable JSON array of row objects.
+    // Preserves native types where possible: numbers stay numbers, null stays null.
+    const output = displayed.map((row) => {
+      const obj = {};
+      for (const f of fields) {
+        const val = row[f.name];
+        obj[f.name] = val ?? null;
+      }
+      return obj;
+    });
+    console.log(JSON.stringify(output));
+  } else if (simple) {
     displayed.forEach((row, i) => {
       console.log(picocolors.dim(`-[ Row ${i + 1} ]` + '-'.repeat(30)));
       for (const f of fields) {

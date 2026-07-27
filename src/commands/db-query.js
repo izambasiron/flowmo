@@ -66,15 +66,33 @@ export function parseJsonArg(raw) {
 }
 
 export async function dbQuery(rawArgs = []) {
-  // Parse flags: --simple, --limit <n> / --limit=<n>
+  // Parse flags: --simple, --json, --limit <n> / --limit=<n>, --param Key=Val
   let simple = false;
+  let json = false;
   let limit = 10;
+  let paramFlags = {};
   const positional = [];
 
   for (let i = 0; i < rawArgs.length; i++) {
     const a = rawArgs[i];
     if (a === '--simple') {
       simple = true;
+    } else if (a === '--json') {
+      json = true;
+    } else if (a === '--param') {
+      const kv = rawArgs[++i];
+      if (kv) {
+        const eq = kv.indexOf('=');
+        if (eq > 0) {
+          paramFlags[kv.slice(0, eq)] = kv.slice(eq + 1);
+        }
+      }
+    } else if (a.startsWith('--param=')) {
+      const kv = a.slice(8);
+      const eq = kv.indexOf('=');
+      if (eq > 0) {
+        paramFlags[kv.slice(0, eq)] = kv.slice(eq + 1);
+      }
     } else if (a === '--limit') {
       limit = Math.max(1, parseInt(rawArgs[++i], 10) || 10);
     } else if (a.startsWith('--limit=')) {
@@ -96,7 +114,7 @@ export async function dbQuery(rawArgs = []) {
     const db = await getDb();
     const result = await db.query(inlineSql, []);
     await closeDb();
-    renderTable(result.fields, result.rows, { simple, limit });
+    renderTable(result.fields, result.rows, { simple, json, limit });
     return;
   }
 
@@ -138,7 +156,10 @@ export async function dbQuery(rawArgs = []) {
     sql = parsedSql;
 
     if (paramNames.length > 0) {
-      const paramsObj = paramsJson ? parseJsonArg(paramsJson) : {};
+      let paramsObj = paramsJson ? parseJsonArg(paramsJson) : {};
+
+      // Merge --param flags (they override JSON params)
+      Object.assign(paramsObj, paramFlags);
 
       // Validate all required params are supplied.
       const missing = paramNames.filter((n) => !(n in paramsObj));
@@ -166,5 +187,5 @@ export async function dbQuery(rawArgs = []) {
   const result = await db.query(sql, params);
   await closeDb();
 
-  renderTable(result.fields, result.rows, { simple, limit });
+  renderTable(result.fields, result.rows, { simple, json, limit });
 }
