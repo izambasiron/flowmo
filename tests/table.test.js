@@ -125,4 +125,51 @@ describe('renderTable', () => {
       expect(combined).toContain('name: Bob');
     });
   });
+
+  describe('--json mode', () => {
+    it('outputs a JSON array of row objects', () => {
+      const output = captureOutput(() =>
+        renderTable(fields('id', 'name'), rows({ id: 1, name: 'Alice' }, { id: 2, name: 'Bob' }), { json: true })
+      );
+      const parsed = JSON.parse(output.join(''));
+      expect(parsed).toEqual([
+        { id: 1, name: 'Alice' },
+        { id: 2, name: 'Bob' },
+      ]);
+    });
+
+    it('preserves number types', () => {
+      const output = captureOutput(() =>
+        renderTable(fields('count'), rows({ count: 42 }), { json: true })
+      );
+      const parsed = JSON.parse(output.join(''));
+      expect(typeof parsed[0].count).toBe('number');
+      expect(parsed[0].count).toBe(42);
+    });
+
+    it('converts undefined to null', () => {
+      const output = captureOutput(() =>
+        renderTable(fields('a', 'b'), rows({ a: 1, b: undefined }), { json: true })
+      );
+      const parsed = JSON.parse(output.join(''));
+      expect(parsed[0].b).toBeNull();
+    });
+
+    it('outputs empty array for zero rows', () => {
+      const output = captureOutput(() =>
+        renderTable(fields('id'), [], { json: true })
+      );
+      expect(output.join('')).toBe('[]');
+    });
+
+    it('respects --limit', () => {
+      const rows = Array.from({ length: 10 }, (_, i) => ({ n: i + 1 }));
+      const output = captureOutput(() =>
+        renderTable(fields('n'), rows, { json: true, limit: 3 })
+      );
+      const parsed = JSON.parse(output.join(''));
+      expect(parsed).toHaveLength(3);
+      expect(parsed[0]).toEqual({ n: 1 });
+    });
+  });
 });

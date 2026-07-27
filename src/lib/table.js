@@ -84,5 +84,9 @@ export function renderTable(fields, rows, { simple = false, json = false, limit 
   const limitNote = total > limit
     ? picocolors.yellow(` — showing ${limit} of ${total}, use --limit to change`)
     : '';
+  if (json) {
+    // JSON output is self-contained — no footer needed
+    return;
+  }
   console.log(picocolors.dim(rowLabel) + limitNote);
 }
