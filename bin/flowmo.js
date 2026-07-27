@@ -38,6 +38,9 @@ ${picocolors.bold('Commands:')}
   ${picocolors.cyan('db:explain')} <file> [params]           Show PostgreSQL query plan for an .advance.sql file
                                      ${picocolors.dim('--param K=V')}  Pass query parameters
 
+  ${picocolors.cyan('db:seed:generate')} <table> <count>      Generate realistic seed data from schema
+                                     ${picocolors.dim('--output <f>')} Write to file instead of stdout
+
 ${picocolors.bold('Examples:')}
   flowmo db:setup
   flowmo db:seed
@@ -64,6 +67,7 @@ async function run() {
   const { dbQuery } = await import('../src/commands/db-query.js');
   const { lint } = await import('../src/commands/lint.js');
   const { dbExplain } = await import('../src/commands/db-explain.js');
+  const { dbSeedGenerate } = await import('../src/commands/db-seed-generate.js');
 
   const commands = {
     'db:setup': () => dbSetup(),
@@ -72,6 +76,7 @@ async function run() {
     'db:query': () => dbQuery(args),
     'lint': () => lint(args),
     'db:explain': () => dbExplain(args),
+    'db:seed:generate': () => dbSeedGenerate(args),
   };
 
   if (!commands[command]) {
