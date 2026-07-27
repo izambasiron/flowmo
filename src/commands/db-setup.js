@@ -12,18 +12,44 @@ function resolveFile(filename) {
 }
 
 export async function dbSetup() {
-  const schemaPath = resolveFile('schema.sql');
+  // Support split schema: schema.os.sql (forge dump) + schema.local.sql (local additions)
+  const osPath = resolveFile('schema.os.sql');
+  const localPath = resolveFile('schema.local.sql');
+  const singlePath = resolveFile('schema.sql');
 
-  if (!schemaPath) {
+  let schemaPath;
+  let schema;
+
+  if (osPath && localPath) {
+    // Both split files exist — concatenate them
+    const osSchema = fs.readFileSync(osPath, 'utf-8').trim();
+    const localSchema = fs.readFileSync(localPath, 'utf-8').trim();
+
+    if (!osSchema && !localSchema) {
+      throw new Error('Both schema.os.sql and schema.local.sql are empty.');
+    }
+
+    schemaPath = `${osPath} + ${localPath}`;
+    schema = [osSchema, localSchema].filter(Boolean).join('\n\n');
+
+    console.log(picocolors.dim(`Using: ${osPath}`));
+    console.log(picocolors.dim(`     + ${localPath}`));
+  } else if (singlePath) {
+    schemaPath = singlePath;
+    schema = fs.readFileSync(singlePath, 'utf-8').trim();
+
+    if (!schema) {
+      throw new Error(`${singlePath} is empty. Add your CREATE TABLE statements first.`);
+    }
+
+    console.log(picocolors.dim(`Using: ${singlePath}`));
+  } else {
     throw new Error(
-      'schema.sql not found. Looked in database/schema.sql and ./schema.sql.\nAre you in a Flowmo project directory?'
+      'No schema found. Expected one of:\n' +
+      '  database/schema.os.sql + database/schema.local.sql (split)\n' +
+      '  database/schema.sql (single file)\n' +
+      'Are you in a Flowmo project directory?'
     );
-  }
-
-  const schema = fs.readFileSync(schemaPath, 'utf-8').trim();
-
-  if (!schema) {
-    throw new Error(`${schemaPath} is empty. Add your CREATE TABLE statements first.`);
   }
 
   console.log(picocolors.cyan('Setting up database…'));

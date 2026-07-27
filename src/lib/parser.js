@@ -91,14 +91,24 @@ export function parseAdvancedSql(sql) {
     return `$${paramIndex[name]}`;
   });
 
+  // 6b. Strip SQL comments so stray apostrophes in prose (e.g. "project's")
+  //     don't create unterminated fake string literals that consume
+  //     identifiers through the next single quote.
+  parsed = parsed.replace(/\/\*[\s\S]*?\*\//g, '');
+  parsed = parsed.replace(/--[^\n]*/g, '');
+
   // 7. Convert any remaining bare PascalCase identifiers to snake_case.
   //    Catches CTE name references like FROM TimesheetSkeleton that have no
   //    dot or brackets. SQL keywords are ALL CAPS and never match because
   //    the regex requires at least one lowercase letter in the word.
   //    @params are already replaced with $N so they are safe.
+  //    ── MUST skip single-quoted string literals so values like 'Draft'
+  //       and 'RoleUnderResourced' are not lowercased into non-matching strings.
   //    e.g. FROM TimesheetSkeleton -> FROM timesheet_skeleton
-  parsed = parsed.replace(/\b([A-Z][a-zA-Z0-9]*[a-z][a-zA-Z0-9]*)\b/g, (_, name) => {
-    return toSnakeCase(name);
+  parsed = parsed.replace(/'[^']*'|\b([A-Z][a-zA-Z0-9]*[a-z][a-zA-Z0-9]*)\b/g, (match, pascal) => {
+    // If the match captured a PascalCase group (not inside quotes), convert it.
+    // Quoted strings match the left alternative and have no capture group → passed through.
+    return pascal ? toSnakeCase(pascal) : match;
   });
 
   return { sql: parsed, paramNames };
