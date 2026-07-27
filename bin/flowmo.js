@@ -28,7 +28,12 @@ ${picocolors.bold('Commands:')}
   ${picocolors.cyan('db:reset')} [--seed [file …]]          Alias for db:setup; add --seed to also run seeds
   ${picocolors.cyan('db:query')} <file|sql> [params-json]   Execute a .sql/.advance.sql file or an inline SQL string
                                      ${picocolors.dim('--limit <n>')}  Max rows to show (default: 10)
-                                     ${picocolors.dim('--simple')}     Plain key: value output, no truncation
+                                     ${picocolors.dim('--json')}       Machine-parseable JSON output
+                                     ${picocolors.dim('--param K=V')}  Pass query parameters
+
+  ${picocolors.cyan('lint')} [file …]                        Lint .visual.html files for OSUI/flowmo conventions
+                                     ${picocolors.dim('--strict')}     Warnings become errors
+                                     ${picocolors.dim('--json')}       JSON output
 
 ${picocolors.bold('Examples:')}
   flowmo db:setup
@@ -54,13 +59,14 @@ async function run() {
   const { dbSeed } = await import('../src/commands/db-seed.js');
   const { dbReset } = await import('../src/commands/db-reset.js');
   const { dbQuery } = await import('../src/commands/db-query.js');
+  const { lint } = await import('../src/commands/lint.js');
 
   const commands = {
     'db:setup': () => dbSetup(),
     'db:seed': () => dbSeed(args),
     'db:reset': () => dbReset(args),
-    // Join all args after the file path in case the shell splits the JSON string.
     'db:query': () => dbQuery(args),
+    'lint': () => lint(args),
   };
 
   if (!commands[command]) {
