@@ -41,6 +41,11 @@ ${picocolors.bold('Commands:')}
   ${picocolors.cyan('db:seed:generate')} <table> <count>      Generate realistic seed data from schema
                                      ${picocolors.dim('--output <f>')} Write to file instead of stdout
 
+  ${picocolors.cyan('screen:create')} <dir-name>               Scaffold a new screen with layout, queries, test, README
+                                     ${picocolors.dim('--layout')}      top|side|base|blank (default: top)
+                                     ${picocolors.dim('--ticket')}      STRBBL-XXX reference
+                                     ${picocolors.dim('--title')}       Display title
+
 ${picocolors.bold('Examples:')}
   flowmo db:setup
   flowmo db:seed
@@ -68,6 +73,7 @@ async function run() {
   const { lint } = await import('../src/commands/lint.js');
   const { dbExplain } = await import('../src/commands/db-explain.js');
   const { dbSeedGenerate } = await import('../src/commands/db-seed-generate.js');
+  const { screenCreate } = await import('../src/commands/screen-create.js');
 
   const commands = {
     'db:setup': () => dbSetup(),
@@ -77,6 +83,7 @@ async function run() {
     'lint': () => lint(args),
     'db:explain': () => dbExplain(args),
     'db:seed:generate': () => dbSeedGenerate(args),
+    'screen:create': () => screenCreate(args),
   };
 
   if (!commands[command]) {

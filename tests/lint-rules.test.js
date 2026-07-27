@@ -27,8 +27,14 @@ describe('checkActiveScreen', () => {
     expect(r[0].rule).toBe('missing-active-screen');
   });
 
-  it('flags missing .layout child', () => {
-    const d = doc('<div class="active-screen"><div>no layout</div></div>');
+  it('allows #app-root mount point (layout rendered by JS)', () => {
+    const d = doc('<div class="active-screen"><div id="app-root"></div></div>');
+    d.body.innerHTML += '<script type="module">import { mount } from \'../../components/layouts/layout-top/index.js\';</script>';
+    expect(checkActiveScreen(d, FILE)).toEqual([]);
+  });
+
+  it('flags missing .layout when no mount point either', () => {
+    const d = doc('<div class="active-screen"><div>no layout or app-root</div></div>');
     const r = checkActiveScreen(d, FILE);
     expect(r).toHaveLength(1);
     expect(r[0].rule).toBe('missing-layout');

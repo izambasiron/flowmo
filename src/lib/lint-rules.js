@@ -14,10 +14,14 @@ export function checkActiveScreen(doc, file) {
       message: 'Root element missing .active-screen wrapper' });
     return findings;
   }
+  // Allow screens that use layout components (.layout rendered by JS at runtime)
   const layout = screen.querySelector('.layout');
-  if (!layout) {
+  const hasAppRoot = screen.querySelector('#app-root');
+  const hasLayoutImport = [...doc.querySelectorAll('script')].some(s =>
+    (s.textContent || '').includes('components/layouts/'));
+  if (!layout && !hasAppRoot && !hasLayoutImport) {
     findings.push({ file, rule: 'missing-layout', level: 'error',
-      message: '.active-screen must contain a .layout child' });
+      message: '.active-screen must contain a .layout child, #app-root mount point, or import a layout component' });
   }
   return findings;
 }
