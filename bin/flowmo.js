@@ -35,6 +35,9 @@ ${picocolors.bold('Commands:')}
                                      ${picocolors.dim('--strict')}     Warnings become errors
                                      ${picocolors.dim('--json')}       JSON output
 
+  ${picocolors.cyan('db:explain')} <file> [params]           Show PostgreSQL query plan for an .advance.sql file
+                                     ${picocolors.dim('--param K=V')}  Pass query parameters
+
 ${picocolors.bold('Examples:')}
   flowmo db:setup
   flowmo db:seed
@@ -60,6 +63,7 @@ async function run() {
   const { dbReset } = await import('../src/commands/db-reset.js');
   const { dbQuery } = await import('../src/commands/db-query.js');
   const { lint } = await import('../src/commands/lint.js');
+  const { dbExplain } = await import('../src/commands/db-explain.js');
 
   const commands = {
     'db:setup': () => dbSetup(),
@@ -67,6 +71,7 @@ async function run() {
     'db:reset': () => dbReset(args),
     'db:query': () => dbQuery(args),
     'lint': () => lint(args),
+    'db:explain': () => dbExplain(args),
   };
 
   if (!commands[command]) {
