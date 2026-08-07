@@ -21,6 +21,8 @@ function toSnakeCase(str) {
  * Parses an OutSystems Advanced SQL file into standard PostgreSQL.
  *
  * Transformations applied (in order):
+ *   SQL comments          ->  stripped FIRST, so prose never produces
+ *                             fake params, identifiers, or string literals
  *   {Entity}.[Attribute]  ->  entity_name.attribute_name  (snake_case)
  *   {Entity}              ->  entity_name                 (snake_case)
  *   AS PascalAlias        ->  AS snake_alias              (CTE cols + table aliases)
@@ -32,9 +34,16 @@ function toSnakeCase(str) {
  * original @-prefixed name that maps to positional binding $(i+1).
  */
 export function parseAdvancedSql(sql) {
+  // 0. Strip SQL comments before anything else. Comment prose can contain
+  //    @words (would become fake required params), {Entity} references,
+  //    and stray apostrophes (e.g. "project's") that would create
+  //    unterminated fake string literals in step 7.
+  let parsed = sql.replace(/\/\*[\s\S]*?\*\//g, '');
+  parsed = parsed.replace(/--[^\n]*/g, '');
+
   // 1. Replace {Entity}.[Attribute] with snake_case table and column
   // 'user' is a PostgreSQL reserved word; quote it so it resolves to our view.
-  let parsed = sql.replace(/\{(\w+)\}\.\[(\w+)\]/g, (_, entity, attr) => {
+  parsed = parsed.replace(/\{(\w+)\}\.\[(\w+)\]/g, (_, entity, attr) => {
     const table = toSnakeCase(entity);
     return `${table === 'user' ? '"user"' : table}.${toSnakeCase(attr)}`;
   });
@@ -90,12 +99,6 @@ export function parseAdvancedSql(sql) {
     }
     return `$${paramIndex[name]}`;
   });
-
-  // 6b. Strip SQL comments so stray apostrophes in prose (e.g. "project's")
-  //     don't create unterminated fake string literals that consume
-  //     identifiers through the next single quote.
-  parsed = parsed.replace(/\/\*[\s\S]*?\*\//g, '');
-  parsed = parsed.replace(/--[^\n]*/g, '');
 
   // 7. Convert any remaining bare PascalCase identifiers to snake_case.
   //    Catches CTE name references like FROM TimesheetSkeleton that have no

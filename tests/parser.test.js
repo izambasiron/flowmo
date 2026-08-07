@@ -165,3 +165,31 @@ describe('Integration: compound SQL snippets', () => {
     expect(sql).toBe('LEFT JOIN ref_task AS nb_ref_task ON nb_ref_task.id = work_log.task_id');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Comments — stripped before any transformation
+// ---------------------------------------------------------------------------
+describe('SQL comments', () => {
+  it('does not treat @words in line comments as parameters', () => {
+    const { sql, paramNames } = parseAdvancedSql(
+      '-- Use @ParamName for input parameters.\nSELECT {User}.[Id] FROM {User} WHERE {User}.[Id] = @UserId'
+    );
+    expect(paramNames).toEqual(['UserId']);
+    expect(sql).not.toContain('@ParamName');
+  });
+
+  it('does not treat @words in block comments as parameters', () => {
+    const { paramNames } = parseAdvancedSql(
+      '/* TODO: wire @StatusFilter later */\nSELECT {User}.[Id] FROM {User} WHERE {User}.[Id] = @UserId'
+    );
+    expect(paramNames).toEqual(['UserId']);
+  });
+
+  it('strips comments containing entity refs and apostrophes before conversion', () => {
+    const { sql } = parseAdvancedSql(
+      "-- the project's {WorkLog}.[Id] lookup\nSELECT {WorkLog}.[Id] FROM {WorkLog}"
+    );
+    expect(sql).toContain('SELECT work_log.id FROM work_log');
+    expect(sql).not.toContain('project');
+  });
+});

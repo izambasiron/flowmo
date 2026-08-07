@@ -106,11 +106,16 @@ export async function dbQuery(rawArgs = []) {
     throw new Error('Usage: flowmo db:query <file.sql> [params-json]\n       flowmo db:query "SELECT …" (inline SQL, no params)');
   }
 
+  // Diagnostics (bindings, warnings, echoes) must never pollute stdout in
+  // --json mode — stdout carries only the JSON array so callers can pipe or
+  // JSON.parse it directly.
+  const diag = (...args) => (json ? console.error(...args) : console.log(...args));
+
   // Inline SQL mode: first positional arg does not end with .sql.
   const looksLikeFile = positional[0].endsWith('.sql');
   if (!looksLikeFile) {
     const inlineSql = positional.join(' ');
-    console.log(picocolors.dim(`Query: ${inlineSql}\n`));
+    diag(picocolors.dim(`Query: ${inlineSql}\n`));
     const db = await getDb();
     const result = await db.query(inlineSql, []);
     await closeDb();
@@ -145,9 +150,9 @@ export async function dbQuery(rawArgs = []) {
       const { sql: dialectSql, warnings } = applyO11Dialect(rawSql);
       sqlToProcess = dialectSql;
       if (warnings.length > 0) {
-        console.log(picocolors.yellow('O11 dialect warnings:'));
-        warnings.forEach((w) => console.log(picocolors.yellow(`  ⚠  ${w}`)));
-        console.log('');
+        diag(picocolors.yellow('O11 dialect warnings:'));
+        warnings.forEach((w) => diag(picocolors.yellow(`  ⚠  ${w}`)));
+        diag('');
       }
     }
 
@@ -175,7 +180,7 @@ export async function dbQuery(rawArgs = []) {
       params = paramNames.map((n) => paramsObj[n]);
 
       const binding = paramNames.map((n, i) => `@${n} → $${i + 1}`).join(', ');
-      console.log(picocolors.dim(`Bindings: ${binding}\n`));
+      diag(picocolors.dim(`Bindings: ${binding}\n`));
     }
   } else if (paramsJson) {
     // For plain .sql files, accept a JSON array of positional params.
