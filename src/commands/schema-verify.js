@@ -83,12 +83,12 @@ export async function schemaVerify(rawArgs = []) {
   const { entities } = transformContextEntities(parsed);
   const entitiesByKey = new Map(entities.map((e) => [e.key, e]));
 
+  // Intentionally one-directional: this checks that every schema.local.sql
+  // table/column landed remotely, not the reverse. A remote entity with
+  // extra columns not present locally is not flagged — verify's job is
+  // confirming your intended push landed, not a full schema diff.
   const report = localTables.map((table) => {
-    const entity = entities.find((e) => {
-      const rawName = toSnakeCase(e.name);
-      const name = rawName === 'user' ? '"user"' : rawName;
-      return name.replace(/"/g, '') === table.name.replace(/"/g, '');
-    });
+    const entity = entities.find((e) => toSnakeCase(e.name) === table.name.replace(/"/g, ''));
 
     if (!entity) {
       return { table: table.name, status: 'missing', details: [] };
@@ -111,6 +111,11 @@ export async function schemaVerify(rawArgs = []) {
     return { table: table.name, status: details.length ? 'attribute mismatch' : 'confirmed', details };
   });
 
+  const allConfirmed = report.every((r) => r.status === 'confirmed');
+  // A scripted caller (an agent, CI) relies on the exit code to detect an
+  // incomplete verification without having to parse output.
+  if (!allConfirmed) process.exitCode = 1;
+
   if (json) {
     console.log(JSON.stringify({ report }));
     return;
@@ -124,7 +129,6 @@ export async function schemaVerify(rawArgs = []) {
   }
   console.log(cliTable.toString());
 
-  const allConfirmed = report.every((r) => r.status === 'confirmed');
   if (allConfirmed) {
     console.log(picocolors.green('\n✓ All local entities confirmed live in OutSystems.'));
     console.log(picocolors.dim("Re-run 'flowmo schema:pull' to fold them into schema.os.sql."));

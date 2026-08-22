@@ -54,10 +54,29 @@ describe('transformContextEntities', () => {
     expect(entities[0].attrs).toHaveLength(1);
   });
 
-  it('handles an entity with zero attributes', () => {
+  it('skips an entity with zero attributes and warns, rather than emitting an empty table', () => {
     const empty = [{ key: 'empty-1', name: 'Empty', additionalData: {} }];
-    const { entities } = transformContextEntities(empty);
-    expect(entities[0].attrs).toEqual([]);
+    const { entities, warnings } = transformContextEntities(empty);
+    expect(entities).toEqual([]);
+    expect(warnings.some((w) => w.includes('Empty'))).toBe(true);
+  });
+
+  it('reports a FK pointing at a zero-attribute entity as unresolved, not silently found', () => {
+    const input = [
+      { key: 'empty-1', name: 'Empty', additionalData: {} },
+      {
+        key: 'child-1',
+        name: 'Child',
+        additionalData: { attributes: [
+          { name: 'Id', dataType: 'Long Integer', isMandatory: true, isPrimaryKey: true },
+          { name: 'EmptyId', dataType: 'Empty Identifier', isMandatory: false, isPrimaryKey: false, foreignKey: { entityKey: 'empty-1' } },
+        ] },
+      },
+    ];
+    const { entities, warnings } = transformContextEntities(input);
+    const child = entities.find((e) => e.name === 'Child');
+    expect(child.attrs.find((a) => a.name === 'EmptyId').references).toBeUndefined();
+    expect(warnings.some((w) => w.includes('Child.EmptyId'))).toBe(true);
   });
 
   it('throws a clear error when given a non-array', () => {

@@ -36,8 +36,11 @@ export async function schemaPull(rawArgs = []) {
     else positional.push(a);
   }
 
-  // Diagnostics must never pollute stdout in --json mode.
-  const diag = (...args) => (json ? console.error(...args) : console.log(...args));
+  // Diagnostics must never pollute stdout when stdout is carrying
+  // machine-consumable output: the JSON summary in --json mode, or the raw
+  // DDL in --dry-run mode (so `schema:pull ... --dry-run > file.sql` gets
+  // only the DDL, not the summary/warning lines appended after it).
+  const diag = (...args) => ((json || dryRun) ? console.error(...args) : console.log(...args));
 
   const raw = readInput(positional[0]);
 
@@ -66,6 +69,7 @@ export async function schemaPull(rawArgs = []) {
   if (json) {
     console.log(JSON.stringify({
       written,
+      ...(dryRun ? { ddl } : {}),
       tableCount: entities.length,
       ownedCount: owned.length,
       dependencyCount: dependencies.length,
@@ -75,7 +79,6 @@ export async function schemaPull(rawArgs = []) {
   } else {
     if (dryRun) {
       console.log(ddl);
-      console.log('');
     }
     diag(picocolors.cyan(`${entities.length} table(s): ${owned.length} owned, ${dependencies.length} pulled in for FK integrity` +
       (dependencyLibs.length ? ` (from: ${dependencyLibs.join(', ')})` : '')));

@@ -18,10 +18,23 @@ export function transformContextEntities(rawEntities) {
     throw new Error('Expected a JSON array of entity objects (the context_entities "data" array).');
   }
 
-  const knownKeys = new Set(rawEntities.map((e) => e.key));
   const warnings = [];
 
-  const entities = rawEntities.map((raw) => {
+  // An entity with zero attributes can't become a valid CREATE TABLE (no
+  // columns) — skip it rather than aborting the whole pull over one bad
+  // entity, consistent with how an unresolved FK is a warning, not a
+  // fatal error. Filtered out before knownKeys so any FK pointing at one
+  // of these correctly reports as unresolved, not silently "found".
+  const usable = rawEntities.filter((raw) => (raw.additionalData?.attributes ?? []).length > 0);
+  for (const raw of rawEntities) {
+    if (!usable.includes(raw)) {
+      warnings.push(`${raw.name}: has no attributes — skipped (can't generate a table with zero columns)`);
+    }
+  }
+
+  const knownKeys = new Set(usable.map((e) => e.key));
+
+  const entities = usable.map((raw) => {
     const rawAttrs = raw.additionalData?.attributes ?? [];
 
     const attrs = rawAttrs.map((attr) => {

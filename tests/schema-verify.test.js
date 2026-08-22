@@ -41,21 +41,35 @@ describe('schema:verify', () => {
     return file;
   }
 
-  it('reports confirmed when the fresh pull matches schema.local.sql exactly', () => {
+  // execSync throws when the child exits non-zero — schema:verify does
+  // that deliberately whenever a table isn't confirmed, so tests that
+  // expect that status need to recover stdout from the caught error.
+  function runVerify(file, extraArgs = '') {
+    try {
+      const stdout = execSync(`node "${CLI}" schema:verify "${file}" --json ${extraArgs}`, { cwd: proj, encoding: 'utf-8' });
+      return { stdout, status: 0 };
+    } catch (e) {
+      return { stdout: e.stdout, status: e.status };
+    }
+  }
+
+  it('reports confirmed and exits 0 when the fresh pull matches schema.local.sql exactly', () => {
     const file = writeFresh([GOAL_ENTITY]);
-    const stdout = execSync(`node "${CLI}" "schema:verify" "${file}" --json`, { cwd: proj, encoding: 'utf-8' });
+    const { stdout, status } = runVerify(file);
     const { report } = JSON.parse(stdout);
     expect(report).toEqual([{ table: 'goal', status: 'confirmed', details: [] }]);
+    expect(status).toBe(0);
   });
 
-  it('reports missing when the entity is absent from the fresh pull', () => {
+  it('reports missing and exits non-zero when the entity is absent from the fresh pull', () => {
     const file = writeFresh([]);
-    const stdout = execSync(`node "${CLI}" "schema:verify" "${file}" --json`, { cwd: proj, encoding: 'utf-8' });
+    const { stdout, status } = runVerify(file);
     const { report } = JSON.parse(stdout);
     expect(report[0].status).toBe('missing');
+    expect(status).not.toBe(0);
   });
 
-  it('reports attribute mismatch when a column type or name diverges', () => {
+  it('reports attribute mismatch and exits non-zero when a column type or name diverges', () => {
     const mismatched = {
       ...GOAL_ENTITY,
       additionalData: { attributes: [
@@ -64,15 +78,16 @@ describe('schema:verify', () => {
       ] },
     };
     const file = writeFresh([mismatched]);
-    const stdout = execSync(`node "${CLI}" "schema:verify" "${file}" --json`, { cwd: proj, encoding: 'utf-8' });
+    const { stdout, status } = runVerify(file);
     const { report } = JSON.parse(stdout);
     expect(report[0].status).toBe('attribute mismatch');
     expect(report[0].details.some((d) => d.includes('name'))).toBe(true);
+    expect(status).not.toBe(0);
   });
 
   it('errors clearly when there is no schema.local.sql to verify against', () => {
     fs.rmSync(path.join(proj, 'database/schema.local.sql'));
     const file = writeFresh([GOAL_ENTITY]);
-    expect(() => execSync(`node "${CLI}" "schema:verify" "${file}"`, { cwd: proj, stdio: 'pipe' })).toThrow();
+    expect(() => execSync(`node "${CLI}" schema:verify "${file}"`, { cwd: proj, stdio: 'pipe' })).toThrow();
   });
 });

@@ -51,6 +51,36 @@ describe('generateSchema', () => {
     const childTable = ddl.slice(ddl.indexOf('CREATE TABLE "child"'));
     expect(childTable).toMatch(/"parent_id"\s+BIGINT/);
   });
+
+  it('drops the back-edge REFERENCES on a mutual FK cycle so the DDL is executable', () => {
+    // A -> B and B -> A: whichever table is emitted second cannot REFERENCE
+    // the other in a plain sequence of CREATE TABLE statements.
+    const entities = [
+      { key: 'a', name: 'A', attrs: [
+        { name: 'Id', dataType: 'Long Integer', isMandatory: true, isKey: true },
+        { name: 'BId', dataType: 'B Identifier', isMandatory: false, isKey: false, isForeignKey: true, references: 'b' },
+      ] },
+      { key: 'b', name: 'B', attrs: [
+        { name: 'Id', dataType: 'Long Integer', isMandatory: true, isKey: true },
+        { name: 'AId', dataType: 'A Identifier', isMandatory: false, isKey: false, isForeignKey: true, references: 'a' },
+      ] },
+    ];
+    const ddl = generateSchema(entities);
+    // Exactly one direction keeps its REFERENCES clause.
+    const referenceCount = (ddl.match(/REFERENCES/g) ?? []).length;
+    expect(referenceCount).toBe(1);
+  });
+
+  it('allows a self-referencing FK without treating it as a cycle', () => {
+    const entities = [
+      { key: 'e1', name: 'Employee', attrs: [
+        { name: 'Id', dataType: 'Long Integer', isMandatory: true, isKey: true },
+        { name: 'ManagerId', dataType: 'Employee Identifier', isMandatory: false, isKey: false, isForeignKey: true, references: 'e1' },
+      ] },
+    ];
+    const ddl = generateSchema(entities);
+    expect(ddl).toContain('REFERENCES "employee"');
+  });
 });
 
 describe('toSnakeCase', () => {
@@ -61,12 +91,19 @@ describe('toSnakeCase', () => {
 });
 
 describe('topoSort', () => {
-  it('breaks cycles by skipping the back-edge rather than looping forever', () => {
+  it('breaks cycles by recording the back-edge rather than looping forever', () => {
     const entities = [
       { key: 'a', name: 'A', attrs: [{ name: 'BId', isForeignKey: true, references: 'b' }] },
       { key: 'b', name: 'B', attrs: [{ name: 'AId', isForeignKey: true, references: 'a' }] },
     ];
-    const sorted = topoSort(entities);
+    const { sorted, skippedRefs } = topoSort(entities);
     expect(sorted).toHaveLength(2);
+    expect(skippedRefs.size).toBe(1);
+  });
+
+  it('does not record a self-reference as a skipped back-edge', () => {
+    const entities = [{ key: 'a', name: 'A', attrs: [{ name: 'ParentId', isForeignKey: true, references: 'a' }] }];
+    const { skippedRefs } = topoSort(entities);
+    expect(skippedRefs.size).toBe(0);
   });
 });

@@ -14,7 +14,7 @@ export function parseCreateTables(sql) {
   const tables = [];
 
   for (const chunk of chunks) {
-    const nameMatch = chunk.match(/^["']?(\w+)["']?\s*\(/i);
+    const nameMatch = chunk.match(/^(?:IF\s+NOT\s+EXISTS\s+)?["']?(\w+)["']?\s*\(/i);
     if (!nameMatch) continue;
     const name = nameMatch[1];
 

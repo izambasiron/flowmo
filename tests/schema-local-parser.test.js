@@ -45,4 +45,15 @@ describe('parseCreateTables', () => {
   it('returns an empty array for a string with no CREATE TABLE', () => {
     expect(parseCreateTables('-- just a comment')).toEqual([]);
   });
+
+  it('parses CREATE TABLE IF NOT EXISTS rather than silently skipping the table', () => {
+    const sql = `
+      CREATE TABLE IF NOT EXISTS project (
+        id BIGSERIAL PRIMARY KEY,
+        name TEXT NOT NULL
+      );
+    `;
+    const tables = parseCreateTables(sql);
+    expect(tables.map((t) => t.name)).toEqual(['project']);
+  });
 });
