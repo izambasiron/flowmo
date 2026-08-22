@@ -71,6 +71,21 @@ describe('generateSchema', () => {
     expect(referenceCount).toBe(1);
   });
 
+  it('inherits type and adds REFERENCES even when the FK column is also the primary key', () => {
+    // Entity-extension / shared-identity pattern: Child.Id is both
+    // PRIMARY KEY and a FK to Parent.Id — valid Postgres, and a real
+    // OutSystems modeling pattern, not just a synthetic edge case.
+    const entities = [
+      { key: 'p1', name: 'Parent', attrs: [{ name: 'Id', dataType: 'Long Integer', isMandatory: true, isKey: true }] },
+      { key: 'c1', name: 'Child', attrs: [
+        { name: 'Id', dataType: 'Text', isMandatory: true, isKey: true, isForeignKey: true, references: 'p1' },
+      ] },
+    ];
+    const ddl = generateSchema(entities);
+    const childTable = ddl.slice(ddl.indexOf('CREATE TABLE "child"'));
+    expect(childTable).toMatch(/"id"\s+BIGINT\s+NOT NULL\s+PRIMARY KEY\s+REFERENCES "parent"/);
+  });
+
   it('allows a self-referencing FK without treating it as a cycle', () => {
     const entities = [
       { key: 'e1', name: 'Employee', attrs: [

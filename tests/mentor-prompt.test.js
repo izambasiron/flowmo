@@ -52,4 +52,15 @@ describe('mentor:prompt', () => {
     fs.rmSync(path.join(proj, 'database/sql/get_goals.advance.sql'));
     expect(() => execSync(`node "${CLI}" mentor:prompt`, { cwd: proj, stdio: 'pipe' })).toThrow();
   });
+
+  it('errors clearly when --output is given with no filename, instead of silently printing to stdout', () => {
+    let stderr = '';
+    try {
+      execSync(`node "${CLI}" mentor:prompt --output`, { cwd: proj, stdio: 'pipe' });
+      expect.unreachable('should have exited non-zero');
+    } catch (e) {
+      stderr = e.stderr?.toString() ?? '';
+    }
+    expect(stderr).toContain('--output requires a file path');
+  });
 });

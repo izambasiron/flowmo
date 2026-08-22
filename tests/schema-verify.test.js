@@ -90,4 +90,57 @@ describe('schema:verify', () => {
     const file = writeFresh([GOAL_ENTITY]);
     expect(() => execSync(`node "${CLI}" schema:verify "${file}"`, { cwd: proj, stdio: 'pipe' })).toThrow();
   });
+
+  it('does not false-flag a PK column that is also an FK', () => {
+    fs.writeFileSync(
+      path.join(proj, 'database/schema.local.sql'),
+      'CREATE TABLE child (\n  id BIGINT PRIMARY KEY REFERENCES parent(id)\n);\n'
+    );
+    const fresh = [
+      { key: 'p1', name: 'Parent', additionalData: { attributes: [
+        { name: 'Id', dataType: 'Long Integer', isMandatory: true, isPrimaryKey: true },
+      ] } },
+      { key: 'c1', name: 'Child', additionalData: { attributes: [
+        { name: 'Id', dataType: 'Text', isMandatory: true, isPrimaryKey: true, foreignKey: { entityKey: 'p1' } },
+      ] } },
+    ];
+    const file = writeFresh(fresh);
+    const { stdout, status } = runVerify(file);
+    const { report } = JSON.parse(stdout);
+    expect(report.find((r) => r.table === 'child').status).toBe('confirmed');
+    expect(status).toBe(0);
+  });
+
+  it('does not false-flag Postgres type synonyms (INT/VARCHAR) as a mismatch', () => {
+    fs.writeFileSync(
+      path.join(proj, 'database/schema.local.sql'),
+      'CREATE TABLE goal (\n  id INT PRIMARY KEY,\n  name VARCHAR(255) NOT NULL\n);\n'
+    );
+    const file = writeFresh([{
+      key: 'g1',
+      name: 'Goal',
+      additionalData: { attributes: [
+        { name: 'Id', dataType: 'Integer', isMandatory: true, isPrimaryKey: true },
+        { name: 'Name', dataType: 'Text', isMandatory: true, isPrimaryKey: false },
+      ] },
+    }]);
+    const { stdout, status } = runVerify(file);
+    const { report } = JSON.parse(stdout);
+    expect(report).toEqual([{ table: 'goal', status: 'confirmed', details: [] }]);
+    expect(status).toBe(0);
+  });
+
+  it('matches an unquoted PascalCase local table against its Postgres-folded lowercase name', () => {
+    fs.writeFileSync(
+      path.join(proj, 'database/schema.local.sql'),
+      'CREATE TABLE Goal (\n  Id BIGSERIAL PRIMARY KEY,\n  Name TEXT NOT NULL\n);\n'
+    );
+    const file = writeFresh([GOAL_ENTITY]);
+    const { stdout, status } = runVerify(file);
+    const { report } = JSON.parse(stdout);
+    // Unquoted "Goal"/"Id"/"Name" fold to goal/id/name in real Postgres —
+    // the report should reflect that, not the literal source casing.
+    expect(report).toEqual([{ table: 'goal', status: 'confirmed', details: [] }]);
+    expect(status).toBe(0);
+  });
 });

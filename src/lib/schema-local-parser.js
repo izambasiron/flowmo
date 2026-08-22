@@ -14,9 +14,13 @@ export function parseCreateTables(sql) {
   const tables = [];
 
   for (const chunk of chunks) {
-    const nameMatch = chunk.match(/^(?:IF\s+NOT\s+EXISTS\s+)?["']?(\w+)["']?\s*\(/i);
+    // A quoted identifier ("Foo") is case-sensitive in Postgres; an
+    // unquoted one (Foo) is folded to lowercase at storage time — track
+    // which applies so the returned name matches what Postgres actually
+    // stores, not the literal source text.
+    const nameMatch = chunk.match(/^(?:IF\s+NOT\s+EXISTS\s+)?(["'])?(\w+)["']?\s*\(/i);
     if (!nameMatch) continue;
-    const name = nameMatch[1];
+    const name = nameMatch[1] ? nameMatch[2] : nameMatch[2].toLowerCase();
 
     const body = chunk.slice(chunk.indexOf('(') + 1);
     const rawColumns = [];
@@ -43,7 +47,9 @@ export function parseCreateTables(sql) {
       if (/^\s*(CONSTRAINT|PRIMARY|FOREIGN|UNIQUE|CHECK)/i.test(col)) continue;
       const parts = col.trim().split(/\s+/);
       if (parts.length < 2) continue;
-      const colName = parts[0].replace(/["']/g, '');
+      const colWasQuoted = /^["']/.test(parts[0]);
+      const rawColName = parts[0].replace(/["']/g, '');
+      const colName = colWasQuoted ? rawColName : rawColName.toLowerCase();
       const colType = parts.slice(1).join(' ').toUpperCase();
       columns.push({ name: colName, type: colType });
     }

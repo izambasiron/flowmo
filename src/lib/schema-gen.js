@@ -121,7 +121,11 @@ export function generateSchema(entities) {
       const notNull = attr.isMandatory || attr.isKey ? ' NOT NULL' : '';
       const pk = attr.isKey ? ' PRIMARY KEY' : '';
       let ref = '';
-      if (!attr.isKey && attr.references) {
+      // A PK can also be an FK (an entity-extension / shared-identity
+      // pattern: Child.Id both PRIMARY KEY and REFERENCES Parent.Id — valid
+      // Postgres syntax) — don't gate this on !attr.isKey, or that column
+      // silently loses both its inherited type and its REFERENCES clause.
+      if (attr.references) {
         const refEntity = keyToEntity.get(attr.references);
         if (refEntity) {
           const pkAttr = refEntity.attrs.find((a) => a.isKey);

@@ -35,7 +35,10 @@ function pgType(dataType) {
 }
 
 function resolvedAttrType(attr, entitiesByKey) {
-  if (!attr.isKey && attr.isForeignKey && attr.references) {
+  // Mirrors schema-gen.js's generateSchema(): a PK can also be an FK, so
+  // this isn't gated on !attr.isKey — that column's real emitted type
+  // still comes from the referenced entity's PK, not its own dataType.
+  if (attr.isForeignKey && attr.references) {
     const target = entitiesByKey.get(attr.references);
     const pkAttr = target?.attrs.find((a) => a.isKey);
     if (pkAttr) return pgType(pkAttr.dataType);
@@ -43,15 +46,35 @@ function resolvedAttrType(attr, entitiesByKey) {
   return pgType(attr.dataType);
 }
 
-// Local schema.local.sql often uses SERIAL/BIGSERIAL for dev-convenience
-// auto-increment PKs; the remote entity's real type never is — normalize
-// both to the same base integer type before comparing so this doesn't read
-// as a mismatch.
+// Local schema.local.sql is hand-written and can legally use any Postgres
+// spelling of a type (SERIAL for a dev-convenience auto-increment PK, INT
+// instead of INTEGER, VARCHAR(n) instead of a bare TEXT column, etc.) —
+// TYPE_MAP only ever emits one canonical spelling per OutSystems type, so
+// without normalizing these synonyms first, a semantically-identical,
+// already-landed column reads as a false "attribute mismatch".
 function normalizeType(type) {
   const t = type.trim().toUpperCase();
   if (t.startsWith('BIGSERIAL')) return 'BIGINT';
   if (t.startsWith('SMALLSERIAL')) return 'SMALLINT';
   if (t.startsWith('SERIAL')) return 'INTEGER';
+
+  // Character types: any length here is a local-only constraint —
+  // OutSystems' Text/Email/etc. attributes have no length dimension in
+  // TYPE_MAP, so the comparison target is always bare TEXT regardless.
+  if (/^(VARCHAR|CHARACTER VARYING|CHAR|CHARACTER)(\(\d+\))?\b/.test(t)) return 'TEXT';
+
+  if (/^TIMESTAMP\s+WITH\s+TIME\s+ZONE\b/.test(t)) return 'TIMESTAMPTZ';
+
+  // NUMERIC/DECIMAL are true Postgres synonyms — keep the precision (a
+  // real divergence worth flagging), just canonicalize the keyword.
+  const numeric = t.match(/^(?:NUMERIC|DECIMAL)(\(\d+(?:,\d+)?\))?\b/);
+  if (numeric) return `NUMERIC${numeric[1] ?? ''}`;
+
+  if (/^INT4?\b/.test(t)) return 'INTEGER';
+  if (/^INT8\b/.test(t)) return 'BIGINT';
+  if (/^INT2\b/.test(t)) return 'SMALLINT';
+  if (/^BOOL\b/.test(t)) return 'BOOLEAN';
+
   return t.split(/\s+/)[0];
 }
 
@@ -88,7 +111,7 @@ export async function schemaVerify(rawArgs = []) {
   // extra columns not present locally is not flagged — verify's job is
   // confirming your intended push landed, not a full schema diff.
   const report = localTables.map((table) => {
-    const entity = entities.find((e) => toSnakeCase(e.name) === table.name.replace(/"/g, ''));
+    const entity = entities.find((e) => toSnakeCase(e.name) === table.name);
 
     if (!entity) {
       return { table: table.name, status: 'missing', details: [] };

@@ -56,4 +56,27 @@ describe('parseCreateTables', () => {
     const tables = parseCreateTables(sql);
     expect(tables.map((t) => t.name)).toEqual(['project']);
   });
+
+  it('folds an unquoted PascalCase identifier to lowercase, matching real Postgres storage', () => {
+    const sql = `
+      CREATE TABLE Goal (
+        Id BIGSERIAL PRIMARY KEY,
+        Name TEXT NOT NULL
+      );
+    `;
+    const [table] = parseCreateTables(sql);
+    expect(table.name).toBe('goal');
+    expect(table.columns.map((c) => c.name)).toEqual(['id', 'name']);
+  });
+
+  it('preserves the exact case of a quoted identifier, matching real Postgres storage', () => {
+    const sql = `
+      CREATE TABLE "Goal" (
+        "Id" BIGSERIAL PRIMARY KEY
+      );
+    `;
+    const [table] = parseCreateTables(sql);
+    expect(table.name).toBe('Goal');
+    expect(table.columns[0].name).toBe('Id');
+  });
 });

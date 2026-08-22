@@ -12,13 +12,18 @@ function resolveFile(filename) {
 
 export async function mentorPrompt(rawArgs = []) {
   let outputFile = null;
+  let outputFlagSeen = false;
   const advanceSqlArgs = [];
 
   for (let i = 0; i < rawArgs.length; i++) {
     const a = rawArgs[i];
-    if (a === '--output') outputFile = rawArgs[++i];
-    else if (a.startsWith('--output=')) outputFile = a.slice(9);
+    if (a === '--output') { outputFlagSeen = true; outputFile = rawArgs[++i]; }
+    else if (a.startsWith('--output=')) { outputFlagSeen = true; outputFile = a.slice(9); }
     else advanceSqlArgs.push(a);
+  }
+
+  if (outputFlagSeen && !outputFile) {
+    throw new Error('--output requires a file path, e.g. --output mentor-prompt.md');
   }
 
   const localPath = resolveFile('schema.local.sql');
