@@ -67,7 +67,11 @@ function normalizeType(type) {
 
   // NUMERIC/DECIMAL are true Postgres synonyms — keep the precision (a
   // real divergence worth flagging), just canonicalize the keyword.
-  const numeric = t.match(/^(?:NUMERIC|DECIMAL)(\(\d+(?:,\d+)?\))?\b/);
+  // NB: the \b must come before the optional precision group, not after —
+  // a \b following ")" (a non-word char) can never match, so the regex
+  // would backtrack and silently abandon the precision, making DECIMAL(10,2)
+  // indistinguishable from NUMERIC(28,8) (a false "confirmed").
+  const numeric = t.match(/^(?:NUMERIC|DECIMAL)\b(\(\d+(?:,\d+)?\))?/);
   if (numeric) return `NUMERIC${numeric[1] ?? ''}`;
 
   if (/^INT4?\b/.test(t)) return 'INTEGER';

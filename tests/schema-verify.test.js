@@ -143,4 +143,38 @@ describe('schema:verify', () => {
     expect(report).toEqual([{ table: 'goal', status: 'confirmed', details: [] }]);
     expect(status).toBe(0);
   });
+
+  it('flags a real precision divergence, but not a matching-precision synonym', () => {
+    // Remote Decimal canonicalizes to NUMERIC(28,8); a hand-written local
+    // DECIMAL(10,2) is a REAL difference and must not read as confirmed.
+    const invoice = [{
+      key: 'i1',
+      name: 'Invoice',
+      additionalData: { attributes: [
+        { name: 'Id', dataType: 'Long Integer', isMandatory: true, isPrimaryKey: true },
+        { name: 'Amount', dataType: 'Decimal', isMandatory: false, isPrimaryKey: false },
+      ] },
+    }];
+    const file = writeFresh(invoice);
+
+    fs.writeFileSync(
+      path.join(proj, 'database/schema.local.sql'),
+      'CREATE TABLE invoice (\n  id BIGSERIAL PRIMARY KEY,\n  amount DECIMAL(10,2)\n);\n'
+    );
+    let { stdout, status } = runVerify(file);
+    let report = JSON.parse(stdout).report;
+    expect(report[0].status).toBe('attribute mismatch');
+    expect(report[0].details.some((d) => d.includes('amount'))).toBe(true);
+    expect(status).toBe(1);
+
+    // Same keyword synonym WITH matching precision is not a divergence.
+    fs.writeFileSync(
+      path.join(proj, 'database/schema.local.sql'),
+      'CREATE TABLE invoice (\n  id BIGSERIAL PRIMARY KEY,\n  amount DECIMAL(28,8)\n);\n'
+    );
+    ({ stdout, status } = runVerify(file));
+    report = JSON.parse(stdout).report;
+    expect(report).toEqual([{ table: 'invoice', status: 'confirmed', details: [] }]);
+    expect(status).toBe(0);
+  });
 });
