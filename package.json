@@ -11,7 +11,7 @@
   "homepage": "https://flowmo.lol",
   "repository": {
     "type": "git",
-    "url": "https://github.com/izambasiron/flowmo"
+    "url": "git+https://github.com/izambasiron/flowmo.git"
   },
   "bugs": {
     "url": "https://github.com/izambasiron/flowmo/issues"
@@ -25,7 +25,7 @@
     "low-code"
   ],
   "bin": {
-    "flowmo": "./bin/flowmo.js"
+    "flowmo": "bin/flowmo.js"
   },
   "files": [
     "bin",
