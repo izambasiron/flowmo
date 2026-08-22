@@ -151,7 +151,7 @@ The Flowmo Agent Skills (scaffolded by `create-flowmo`) ensure your AI assistant
 
 The OutSystems MCP is early access — not GA, and not every ODC tenant has it yet. If your AI assistant has a live connection to it this session, steps 1 and 5 above can be automated instead of done by hand:
 
-1. **Pull the schema**: Ask your agent to call `context_entities` (`--app <App> --owned-only false`, to pull in the full FK dependency closure) and pipe the merged result into `flowmo schema:pull` — this writes `database/schema.os.sql` and reports any foreign keys it couldn't resolve.
+1. **Pull the schema**: Ask your agent to call `context_entities` (`app: "<App>"`, `owned_only: false` — to pull in the full FK dependency closure) and pipe the merged result into `flowmo schema:pull` — this writes `database/schema.os.sql` and reports any foreign keys it couldn't resolve.
 2. **AI Generation → Instant Validation → Query Verification**: same as steps 2–4 above, working against `schema.local.sql` for anything not yet in OutSystems.
 3. **Platform Sync**: run `flowmo mentor:prompt` to turn the validated `schema.local.sql`/`.advance.sql` files into a ready-to-review prompt, and hand it to `mentor_start` instead of retyping into Service Studio.
 4. **Confirm it landed**: don't trust the publish confirmation alone — re-pull `context_entities` and run `flowmo schema:verify` against the fresh JSON to confirm each entity is `confirmed`, `missing`, or has an `attribute mismatch`. This checks one direction only — that everything in `schema.local.sql` landed remotely, not whether OutSystems has extra columns you didn't ask for.
