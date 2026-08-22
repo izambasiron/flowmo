@@ -25,9 +25,12 @@ export function transformContextEntities(rawEntities) {
   // entity, consistent with how an unresolved FK is a warning, not a
   // fatal error. Filtered out before knownKeys so any FK pointing at one
   // of these correctly reports as unresolved, not silently "found".
-  const usable = rawEntities.filter((raw) => (raw.additionalData?.attributes ?? []).length > 0);
+  // (Single pass: build `usable` and the skip warnings together.)
+  const usable = [];
   for (const raw of rawEntities) {
-    if (!usable.includes(raw)) {
+    if ((raw.additionalData?.attributes ?? []).length > 0) {
+      usable.push(raw);
+    } else {
       warnings.push(`${raw.name}: has no attributes — skipped (can't generate a table with zero columns)`);
     }
   }

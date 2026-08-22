@@ -52,6 +52,16 @@ export async function schemaPull(rawArgs = []) {
   }
 
   const { entities, warnings } = transformContextEntities(parsed);
+
+  // Never write an empty schema.os.sql — it would silently clobber the
+  // previous good pull. Zero usable entities means bad input (empty array,
+  // or every entity was skipped as attribute-less), so fail loudly rather
+  // than warning-and-continuing like a single skipped entity.
+  if (entities.length === 0) {
+    const why = warnings.length ? `\n${warnings.map((w) => `  ⚠  ${w}`).join('\n')}` : '';
+    throw new Error(`No usable entities found in input — schema.os.sql was NOT written.${why}`);
+  }
+
   const ddl = generateSchema(entities);
 
   const owned = entities.filter((e) => !e.isReferenced);

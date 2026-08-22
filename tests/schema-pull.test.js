@@ -61,4 +61,22 @@ describe('schema:pull', () => {
     expect(parsed.dependencyCount).toBe(1);
     expect(parsed.warnings.some((w) => w.includes('Loan.EmployeeId'))).toBe(true);
   });
+
+  it('refuses to write when every entity is skipped, leaving a previous schema.os.sql untouched', () => {
+    const emptyFixture = path.join(proj, 'empty.json');
+    fs.writeFileSync(emptyFixture, JSON.stringify([{ key: 'e1', name: 'Empty', additionalData: {} }]));
+    const osSql = path.join(proj, 'database/schema.os.sql');
+    fs.writeFileSync(osSql, '-- previous good pull\n');
+
+    let stderr = '';
+    try {
+      execSync(`node "${CLI}" schema:pull "${emptyFixture}"`, { cwd: proj, stdio: 'pipe' });
+      expect.unreachable('should have exited non-zero');
+    } catch (e) {
+      stderr = e.stderr?.toString() ?? '';
+    }
+    expect(stderr).toContain('No usable entities');
+    expect(stderr).toContain('Empty'); // the skip warning explains why
+    expect(fs.readFileSync(osSql, 'utf-8')).toBe('-- previous good pull\n');
+  });
 });
