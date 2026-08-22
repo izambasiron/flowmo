@@ -41,6 +41,18 @@ ${picocolors.bold('Commands:')}
   ${picocolors.cyan('db:seed:generate')} <table> <count>      Generate realistic seed data from schema
                                      ${picocolors.dim('--output <f>')} Write to file instead of stdout
 
+  ${picocolors.cyan('schema:pull')} <entities.json>           Generate database/schema.os.sql from a merged context_entities JSON array
+                                     ${picocolors.dim('[stdin]')}     Reads from stdin if no file arg given
+                                     ${picocolors.dim('--dry-run')}   Print DDL without writing schema.os.sql
+                                     ${picocolors.dim('--json')}      Machine-parseable summary output
+
+  ${picocolors.cyan('mentor:prompt')} [file.advance.sql …]    Build a Mentor prompt from schema.local.sql + validated queries
+                                     ${picocolors.dim('--output <f>')} Write to file instead of stdout
+
+  ${picocolors.cyan('schema:verify')} <fresh-entities.json>    Diff a fresh context_entities pull against schema.local.sql
+                                     ${picocolors.dim('[stdin]')}     Reads from stdin if no file arg given
+                                     ${picocolors.dim('--json')}      Machine-parseable report output
+
   ${picocolors.cyan('screen:create')} <dir-name>               Scaffold a new screen with layout, queries, test, README
                                      ${picocolors.dim('--layout')}      top|side|base|blank (default: top)
                                      ${picocolors.dim('--ticket')}      STRBBL-XXX reference
@@ -58,6 +70,11 @@ ${picocolors.bold('Examples:')}
   flowmo db:query "SELECT * FROM users"
   flowmo db:query database/queries/get_users.sql --limit 25
   flowmo db:query database/queries/get_users.sql --simple
+  flowmo schema:pull database/entities.json
+  flowmo schema:pull database/entities.json --dry-run
+  flowmo mentor:prompt
+  flowmo mentor:prompt database/sql/GetProjects.advance.sql --output mentor-prompt.md
+  flowmo schema:verify database/fresh-entities.json
 `;
 
 async function run() {
@@ -74,6 +91,9 @@ async function run() {
   const { dbExplain } = await import('../src/commands/db-explain.js');
   const { dbSeedGenerate } = await import('../src/commands/db-seed-generate.js');
   const { screenCreate } = await import('../src/commands/screen-create.js');
+  const { schemaPull } = await import('../src/commands/schema-pull.js');
+  const { mentorPrompt } = await import('../src/commands/mentor-prompt.js');
+  const { schemaVerify } = await import('../src/commands/schema-verify.js');
 
   const commands = {
     'db:setup': () => dbSetup(),
@@ -84,6 +104,9 @@ async function run() {
     'db:explain': () => dbExplain(args),
     'db:seed:generate': () => dbSeedGenerate(args),
     'screen:create': () => screenCreate(args),
+    'schema:pull': () => schemaPull(args),
+    'mentor:prompt': () => mentorPrompt(args),
+    'schema:verify': () => schemaVerify(args),
   };
 
   if (!commands[command]) {
