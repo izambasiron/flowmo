@@ -15,15 +15,29 @@ function esc(str) {
   return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function scaffoldScreen(projectPath, dirName, { layout, ticket, title, module }) {
+function inferAppName(projectPath) {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(projectPath, 'package.json'), 'utf-8'));
+    if (pkg.name) return pkg.name.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  } catch {
+    // fall through to generic default
+  }
+  return 'App';
+}
+
+function scaffoldScreen(projectPath, dirName, { layout, ticket, title, module, appName, force }) {
   const screenDir = path.join(projectPath, 'screens', dirName);
-  if (fs.existsSync(screenDir)) {
+  if (fs.existsSync(screenDir) && !force) {
     throw new Error(`Directory already exists: screens/${dirName}\nUse --force to overwrite.`);
   }
 
   fs.mkdirSync(screenDir, { recursive: true });
-  fs.mkdirSync(path.join(screenDir, 'mockups'));
-  fs.writeFileSync(path.join(screenDir, 'mockups', '.gitkeep'), '');
+  // recursive: true — under --force, mockups/ (and any Figma exports a
+  // developer already dropped there) must survive re-scaffolding.
+  fs.mkdirSync(path.join(screenDir, 'mockups'), { recursive: true });
+  if (!fs.existsSync(path.join(screenDir, 'mockups', '.gitkeep'))) {
+    fs.writeFileSync(path.join(screenDir, 'mockups', '.gitkeep'), '');
+  }
 
   const displayTitle = title || dirName.replace(/^\d+-/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
@@ -50,12 +64,11 @@ function scaffoldScreen(projectPath, dirName, { layout, ticket, title, module })
     import { getScreenData } from './queries.js';
 
     const layout = mount(document.getElementById('app-root'), {
-      appName: 'SSR',
+      appName: '${esc(appName)}',
       menuLinks: [
-        { label: 'Projects', href: '#', active: true },
-        { label: 'Approvals', href: '#' },
+        { label: 'Home', href: '#', active: true },
       ],
-      breadcrumbs: ['Projects', 'SSR-90-9876'],
+      breadcrumbs: ['${esc(displayTitle)}'],
       title: '${esc(displayTitle)}',
     });
 
@@ -69,7 +82,7 @@ function scaffoldScreen(projectPath, dirName, { layout, ticket, title, module })
   fs.writeFileSync(path.join(screenDir, 'index.visual.html'), html);
 
   // ── queries.js ─────────────────────────────
-  const ticketRef = ticket ? `STRBBL-${ticket}` : '';
+  const ticketRef = ticket;
   const queries = `// ${dirName} — data layer
 // ${ticketRef ? `Ticket: ${ticketRef}` : ''}
 
@@ -108,7 +121,7 @@ describe('${ticketRef ? ticketRef + ' — ' : ''}${displayTitle}', () => {
   // ── README.md ───────────────────────────────
   const readme = `# ${ticketRef ? ticketRef + ' — ' : ''}${displayTitle}
 
-**Ticket:** ${ticketRef ? `[${ticketRef}](docs/tickets/…)` : '_none_'}
+**Ticket:** ${ticketRef ? esc(ticketRef) : '_none_'}
 **OutSystems:** Module \`${esc(module || '…')}\`, Screen \`${esc(displayTitle)}\`
 **Status:** In progress
 
@@ -162,8 +175,8 @@ export async function screenCreate(rawArgs = []) {
   const dirName = positional[0];
   if (!dirName) {
     throw new Error(
-      'Usage: flowmo screen:create <dir-name> [--layout top|side|base|blank] [--ticket STRBBL-XXX] [--title "…"]\n' +
-      'Example: flowmo screen:create 354-project-detail --layout top --ticket STRBBL-354 --title "Project Detail"'
+      'Usage: flowmo screen:create <dir-name> [--layout top|side|base|blank] [--ticket <ref>] [--title "…"]\n' +
+      'Example: flowmo screen:create 354-project-detail --layout top --ticket PROJ-354 --title "Project Detail"'
     );
   }
 
@@ -171,13 +184,9 @@ export async function screenCreate(rawArgs = []) {
     throw new Error(`Invalid layout: ${layout}. Must be one of: ${LAYOUTS.join(', ')}`);
   }
 
-  // Strip STRBBL- prefix if present
-  if (ticket.toUpperCase().startsWith('STRBBL-')) {
-    ticket = ticket.slice(7);
-  }
-
   const projectPath = process.cwd();
-  const screenDir = scaffoldScreen(projectPath, dirName, { layout, ticket, title, module });
+  const appName = inferAppName(projectPath);
+  const screenDir = scaffoldScreen(projectPath, dirName, { layout, ticket, title, module, appName, force });
 
   const rel = path.relative(projectPath, screenDir);
   console.log(picocolors.green(`✓ Created ${rel}/`));
