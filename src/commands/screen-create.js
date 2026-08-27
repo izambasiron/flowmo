@@ -53,10 +53,13 @@ function scaffoldScreen(projectPath, dirName, { layout, ticket, title, module, a
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
 </head>
 <body class="desktop landscape windows chrome is--touch">
-  <div class="active-screen">
-    <div id="app-root">
-      <!-- Layout component mounts here -->
-    </div>
+  <div id="app-root">
+    <!-- Layout component mounts here -->
+    <!-- Every layout in components/layouts/ already wraps its own output in
+         .active-screen — do not add a second one here, it silently breaks
+         scrolling (the outer .active-screen clamps to 100vh with its own
+         overflow:auto, but its scrollHeight never grows past that because
+         the real content lives inside the INNER .active-screen instead). -->
   </div>
   <script src="../../scripts/device-detect.js"></script>
   <script type="module">
