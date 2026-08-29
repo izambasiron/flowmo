@@ -3,6 +3,14 @@ import path from 'path';
 
 const ICON_LIBRARIES = ['font-awesome', 'phosphor'];
 
+// Regular weight only for Phosphor — see architectural-heuristics.md §1: a
+// real ODC module typically ships one installed icon weight, and `ph-fill`
+// glyphs silently vanish if the module doesn't also have Fill installed.
+export const ICON_CDN = {
+  'font-awesome': '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">',
+  phosphor: '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/regular/style.css">',
+};
+
 function toPascalCase(str) {
   const name = String(str || '')
     .replace(/[^a-zA-Z0-9]+/g, '-')

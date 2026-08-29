@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { pathToFileURL } from 'url';
 import picocolors from 'picocolors';
-import { readFlowmoConfig, toPascalCase } from '../lib/flowmo-config.js';
+import { readFlowmoConfig, toPascalCase, ICON_CDN } from '../lib/flowmo-config.js';
 
 /* Generalizes the OutSystems-porting pipeline EFM-Cargo hand-built in
    scripts/build-os-block.js (see flowmo/reviews/2026-08-29-efm-cargo-retro.md
@@ -12,14 +12,6 @@ import { readFlowmoConfig, toPascalCase } from '../lib/flowmo-config.js';
    exactly one destination (component CSS → that Block, theme.css → the
    Theme, screen CSS → that Screen), so it's just pasted from source; the
    README documents where. */
-
-const ICON_CDN = {
-  'font-awesome': '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">',
-  // Regular weight only — see architectural-heuristics.md §1: a real ODC
-  // module typically ships one Phosphor weight as an installed resource, and
-  // `ph-fill` glyphs silently vanish if the module doesn't have Fill too.
-  phosphor: '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/regular/style.css">',
-};
 
 function discoverComponents(projectPath) {
   const root = path.join(projectPath, 'components/business');

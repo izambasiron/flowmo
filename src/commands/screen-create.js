@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import picocolors from 'picocolors';
+import { readFlowmoConfig, ICON_CDN } from '../lib/flowmo-config.js';
 
 const LAYOUTS = ['top', 'side', 'base', 'blank'];
 
@@ -26,6 +27,7 @@ function inferAppName(projectPath) {
 }
 
 function scaffoldScreen(projectPath, dirName, { layout, ticket, title, module, appName, force }) {
+  const { iconLibrary } = readFlowmoConfig(projectPath);
   const screenDir = path.join(projectPath, 'screens', dirName);
   if (fs.existsSync(screenDir) && !force) {
     throw new Error(`Directory already exists: screens/${dirName}\nUse --force to overwrite.`);
@@ -50,7 +52,7 @@ function scaffoldScreen(projectPath, dirName, { layout, ticket, title, module, a
   <link rel="stylesheet" href="../../theme/outsystems-ui.css">
   <link rel="stylesheet" href="../../theme/grid.css">
   <link rel="stylesheet" href="../../theme/theme.css">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+  ${ICON_CDN[iconLibrary]}
 </head>
 <body class="desktop landscape windows chrome is--touch">
   <div id="app-root">

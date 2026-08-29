@@ -117,6 +117,27 @@ WHERE {Users}.[Id] = @UserId AND {Users}.[IsActive] = @Status
 (1 row)
 ```
 
+### `flowmo screen:create <dir-name>`
+
+Scaffolds a new screen: `index.visual.html` (wired to the layout component of your choice),
+`queries.js`, `index.test.js`, `README.md`, and a `mockups/` folder.
+
+```bash
+npx flowmo screen:create project-detail --layout side --ticket PROJ-354 --title "Project Detail"
+```
+
+| Flag | Default | |
+|---|---|---|
+| `--layout` | `top` | `top`, `side`, `base`, or `blank` |
+| `--ticket` | _(none)_ | reference shown in the generated README |
+| `--title` | derived from `<dir-name>` | display title |
+| `--module` | _(none)_ | OutSystems module name, shown in the generated README |
+| `--force` | off | overwrite an existing `screens/<dir-name>/` |
+
+The scaffolded `<head>` links the icon CDN from `{ "flowmo": { "iconLibrary" } }` in `package.json`
+(`"font-awesome"`, the default, or `"phosphor"`) — set once via `create-flowmo`'s scaffold prompt,
+or by hand in an existing project, instead of swapping the link after every new screen.
+
 ### `flowmo block:build`
 
 Bundles `components/business/**/index.js` into a single non-module script OutSystems can host as
