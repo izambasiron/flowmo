@@ -117,6 +117,74 @@ WHERE {Users}.[Id] = @UserId AND {Users}.[IsActive] = @Status
 (1 row)
 ```
 
+### `flowmo block:build`
+
+Bundles `components/business/**/index.js` into a single non-module script OutSystems can host as
+a Script resource, plus a cascade-accurate `verify.html` and a paste README, into
+`dist/outsystems/` (gitignored — re-run rather than editing).
+
+```bash
+npx flowmo block:build
+```
+
+OutSystems can't host ES modules, so each component's `export function render(props)` is stripped
+and wrapped in its own IIFE on `window.<Namespace>.render<ComponentName>`. CSS is never built —
+`components/<name>/index.css` targets that component's Block Style Sheet, `theme/theme.css`
+targets the module Theme, and `screens/<name>/index.css` targets that Screen's Style Sheet, so the
+generated README just tells you what pastes where.
+
+**Config** (optional, in `package.json`):
+```json
+{
+  "flowmo": {
+    "namespace": "EFM",
+    "iconLibrary": "phosphor"
+  }
+}
+```
+`namespace` defaults to a PascalCase form of the package name; `iconLibrary` (`"font-awesome"` or
+`"phosphor"`) is used only for the generic `verify.html` fallback's icon CDN link.
+
+**Demo data:** add `components/business/<name>/demo.js` (default export) so a Block can render a
+real layout before any aggregate is wired up. Without it, that component's demo data is `{}`.
+
+**`verify.html` fidelity:** if `theme/verify-shell.html` exists — a hand-authored file with the
+real DOM/body-classes sampled from your live app, elements marked `data-flowmo-mount="Name"`, and
+`<!-- flowmo:stylesheets -->` / `<!-- flowmo:scripts -->` placeholders — `block:build` injects the
+correctly-ordered stylesheets and mount script into it, and warns (without failing) if a mount
+name doesn't match any built component, or if a built component isn't mounted anywhere in the
+shell — a component the shell forgot to mount would otherwise never be exercised by `verify.html`
+at all, silently. Without a shell, it falls back to a generic minimal harness: still loads Block
+CSS → `outsystems-ui.css` → Theme → Screen in the real cascade order (see `outsystems-ui`'s
+`architectural-heuristics.md` in `create-flowmo`), so it still catches cascade/specificity bugs,
+but it won't catch anything that depends on the real live DOM shape.
+
+To get full fidelity, capture your live app's real DOM (view-source or your browser devtools) into
+`theme/verify-shell.html`, e.g.:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- your live app's real fonts/icon-library <link>s go here -->
+  <!-- flowmo:stylesheets -->
+</head>
+<!-- copy the real body classes and DOM structure from your live app here -->
+<body class="desktop landscape osx chrome">
+  <div data-flowmo-mount="JobNavRail"></div>
+  <div data-flowmo-mount="JobContextCard"></div>
+  <!-- one data-flowmo-mount="ComponentName" per Block you're verifying -->
+  <!-- flowmo:scripts -->
+</body>
+</html>
+```
+
+**Interactions:** if `scripts/prototype-interactions.js` exists, it's copied to
+`dist/outsystems/<Namespace>-interactions.js` and wired in as a second Script resource — a demo
+aid, not the final implementation. Each interaction it drives should eventually become a real
+platform widget.
+
 ## Project Structure
 
 A scaffolded Flowmo project looks like this:
