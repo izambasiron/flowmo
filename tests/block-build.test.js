@@ -7,14 +7,15 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.resolve(__dirname, '../bin/flowmo.js');
+const BANNER_RE = /^\/\* flowmo:build [0-9a-f]{8} · \d{4}-\d{2}-\d{2}T[\d:.]+Z — regenerate with `flowmo block:build`; do not hand-edit \*\/\n/;
 
-function writeComponent(proj, name, { render = true, css = true, demo = null } = {}) {
+function writeComponent(proj, name, { render = true, css = true, demo = null, extraJs = '' } = {}) {
   const dir = path.join(proj, 'components/business', name);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(
     path.join(dir, 'index.js'),
     render
-      ? `export function render(props) {\n  return '<div class="${name}">' + (props.label || '') + '</div>';\n}\n`
+      ? `${extraJs}export function render(props) {\n  return '<div class="${name}">' + (props.label || '') + '</div>';\n}\n`
       : `export function helper() { return 42; }\n`
   );
   if (css) fs.writeFileSync(path.join(dir, 'index.css'), `.${name} { color: red; }\n`);
@@ -40,7 +41,7 @@ describe('block:build', () => {
     expect(fs.existsSync(path.join(proj, 'dist/outsystems'))).toBe(false);
   });
 
-  it('bundles a component, derives namespace from package.json name, and writes a gitignored generic verify.html', () => {
+  it('bundles a component into its own folder, derives namespace from package.json name, and writes a gitignored generic verify.html', () => {
     fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'efm-cargo' }));
     writeComponent(proj, 'job-nav-rail', { demo: `export default { label: 'hi' };\n` });
 
@@ -49,28 +50,44 @@ describe('block:build', () => {
     const outDir = path.join(proj, 'dist/outsystems');
     expect(fs.readFileSync(path.join(outDir, '.gitignore'), 'utf-8')).toBe('*\n');
 
-    const js = fs.readFileSync(path.join(outDir, 'EfmCargo-blocks.js'), 'utf-8');
+    const js = fs.readFileSync(path.join(outDir, 'JobNavRail/JobNavRail.js'), 'utf-8');
+    expect(js).toMatch(BANNER_RE);
     expect(js).toContain('window.EfmCargo.renderJobNavRail = (function () {');
-    expect(js).toContain('window.EfmCargo.render = function');
     expect(js).not.toContain('export function render'); // export stripped
-    expect(js).toContain('"JobNavRail"'); // demoData key
+    expect(js).toContain('window.EfmCargo.demoData.JobNavRail'); // demoData key
     expect(js).toContain('"label": "hi"');
+
+    const css = fs.readFileSync(path.join(outDir, 'JobNavRail/JobNavRail.css'), 'utf-8');
+    expect(css).toMatch(BANNER_RE);
+    expect(css).toContain('.job-nav-rail { color: red; }');
+
+    const shared = fs.readFileSync(path.join(outDir, 'EfmCargo-Shared.js'), 'utf-8');
+    expect(shared).toMatch(BANNER_RE);
+    expect(shared).toContain('window.EfmCargo.render = function');
+
+    const theme = fs.readFileSync(path.join(outDir, 'theme.css'), 'utf-8');
+    expect(theme).toMatch(BANNER_RE);
+    expect(theme).toContain('--color-primary: #123');
 
     const verify = fs.readFileSync(path.join(outDir, 'verify.html'), 'utf-8');
     expect(verify).toContain('Generic fallback harness');
     expect(verify).toContain('data-flowmo-mount="JobNavRail"');
+    expect(verify).toContain('<script src="./EfmCargo-Shared.js"></script>');
+    expect(verify).toContain('<script src="./JobNavRail/JobNavRail.js"></script>');
     // cascade order: component CSS, then OSUI, then theme, in that order
-    const compIdx = verify.indexOf('components/business/job-nav-rail/index.css');
+    const compIdx = verify.indexOf('JobNavRail/JobNavRail.css');
     const osuiIdx = verify.indexOf('theme/outsystems-ui.css');
-    const themeIdx = verify.indexOf('theme/theme.css');
+    const themeIdx = verify.indexOf('theme.css');
     expect(compIdx).toBeGreaterThan(-1);
     expect(compIdx).toBeLessThan(osuiIdx);
     expect(osuiIdx).toBeLessThan(themeIdx);
 
     const readme = fs.readFileSync(path.join(outDir, 'README.md'), 'utf-8');
-    expect(readme).toContain('EfmCargo-blocks.js');
-    expect(readme).toContain('the JobNavRail Block');
+    expect(readme).toContain('JobNavRail/JobNavRail.js');
+    expect(readme).toContain('JobNavRail/JobNavRail.css');
+    expect(readme).toContain('EfmCargo-Shared.js');
     expect(readme).not.toContain('| `theme/outsystems-ui.css`'); // never a paste target
+    expect(readme).toContain('| Component | Script resource | Style Sheet |'); // table header present
   });
 
   it('respects an explicit namespace and iconLibrary config', () => {
@@ -83,7 +100,8 @@ describe('block:build', () => {
     execSync(`node "${CLI}" block:build`, { cwd: proj, stdio: 'pipe' });
 
     const outDir = path.join(proj, 'dist/outsystems');
-    expect(fs.existsSync(path.join(outDir, 'EFM-blocks.js'))).toBe(true);
+    expect(fs.existsSync(path.join(outDir, 'JobChat/JobChat.js'))).toBe(true);
+    expect(fs.existsSync(path.join(outDir, 'EFM-Shared.js'))).toBe(true);
     const verify = fs.readFileSync(path.join(outDir, 'verify.html'), 'utf-8');
     expect(verify).toContain('phosphor-icons');
   });
@@ -96,12 +114,12 @@ describe('block:build', () => {
     const out = execSync(`node "${CLI}" block:build`, { cwd: proj, encoding: 'utf-8' });
     expect(out).toContain('not-a-component/index.js has no "render" export');
 
-    const js = fs.readFileSync(path.join(proj, 'dist/outsystems/EfmCargo-blocks.js'), 'utf-8');
-    expect(js).toContain('renderJobChat');
-    expect(js).not.toContain('NotAComponent');
+    const outDir = path.join(proj, 'dist/outsystems');
+    expect(fs.existsSync(path.join(outDir, 'JobChat/JobChat.js'))).toBe(true);
+    expect(fs.existsSync(path.join(outDir, 'NotAComponent'))).toBe(false);
   });
 
-  it('lists screen stylesheets in the paste table', () => {
+  it('copies screen stylesheets into dist/outsystems/screens/ and lists them in the README', () => {
     fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'efm-cargo' }));
     writeComponent(proj, 'job-chat');
     fs.mkdirSync(path.join(proj, 'screens/general-details'), { recursive: true });
@@ -109,8 +127,13 @@ describe('block:build', () => {
 
     execSync(`node "${CLI}" block:build`, { cwd: proj, stdio: 'pipe' });
 
-    const readme = fs.readFileSync(path.join(proj, 'dist/outsystems/README.md'), 'utf-8');
-    expect(readme).toContain('screens/general-details/index.css');
+    const outDir = path.join(proj, 'dist/outsystems');
+    const screenCss = fs.readFileSync(path.join(outDir, 'screens/GeneralDetails.css'), 'utf-8');
+    expect(screenCss).toMatch(BANNER_RE);
+    expect(screenCss).toContain('.foo {}');
+
+    const readme = fs.readFileSync(path.join(outDir, 'README.md'), 'utf-8');
+    expect(readme).toContain('screens/GeneralDetails.css');
     expect(readme).toContain('GeneralDetails Screen');
   });
 
@@ -123,11 +146,31 @@ describe('block:build', () => {
     execSync(`node "${CLI}" block:build`, { cwd: proj, stdio: 'pipe' });
 
     const outDir = path.join(proj, 'dist/outsystems');
-    expect(fs.readFileSync(path.join(outDir, 'EfmCargo-interactions.js'), 'utf-8')).toContain('addEventListener');
+    const interactions = fs.readFileSync(path.join(outDir, 'EfmCargo-Interactions.js'), 'utf-8');
+    expect(interactions).toMatch(BANNER_RE);
+    expect(interactions).toContain('addEventListener');
     const verify = fs.readFileSync(path.join(outDir, 'verify.html'), 'utf-8');
-    expect(verify).toContain('EfmCargo-interactions.js');
+    expect(verify).toContain('EfmCargo-Interactions.js');
     const readme = fs.readFileSync(path.join(outDir, 'README.md'), 'utf-8');
     expect(readme).toContain('a second module **Script** resource');
+  });
+
+  it('rewrites a named import from components/shared/ into a window.<NS>.Shared reference', () => {
+    fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'efm-cargo' }));
+    fs.mkdirSync(path.join(proj, 'components/shared'), { recursive: true });
+    fs.writeFileSync(path.join(proj, 'components/shared/esc.js'), `export function esc(s) {\n  return String(s ?? '').replace(/&/g, '&amp;');\n}\n`);
+    writeComponent(proj, 'job-nav-rail', { extraJs: `import { esc } from '../../shared/esc.js';\n` });
+
+    execSync(`node "${CLI}" block:build`, { cwd: proj, stdio: 'pipe' });
+
+    const outDir = path.join(proj, 'dist/outsystems');
+    const js = fs.readFileSync(path.join(outDir, 'JobNavRail/JobNavRail.js'), 'utf-8');
+    expect(js).toContain('const { esc } = window.EfmCargo.Shared;');
+    expect(js).not.toContain("import { esc }");
+
+    const shared = fs.readFileSync(path.join(outDir, 'EfmCargo-Shared.js'), 'utf-8');
+    expect(shared).toContain('function esc(s)');
+    expect(shared).toContain('window.EfmCargo.Shared.esc = esc;');
   });
 
   it('injects into a hand-authored theme/verify-shell.html instead of the generic fallback', () => {
@@ -148,6 +191,8 @@ describe('block:build', () => {
     const verify = fs.readFileSync(path.join(proj, 'dist/outsystems/verify.html'), 'utf-8');
     expect(verify).toContain('class="desktop landscape osx chrome"');
     expect(verify).toContain('theme/outsystems-ui.css');
+    expect(verify).toContain('<script src="./EfmCargo-Shared.js"></script>');
+    expect(verify).toContain('<script src="./JobChat/JobChat.js"></script>');
     expect(verify).toContain("EfmCargo.render('JobChat'");
     expect(verify).not.toContain('generic fallback harness');
 
