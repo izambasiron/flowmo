@@ -140,19 +140,42 @@ or by hand in an existing project, instead of swapping the link after every new 
 
 ### `flowmo block:build`
 
-Bundles `components/business/**/index.js` into a single non-module script OutSystems can host as
-a Script resource, plus a cascade-accurate `verify.html` and a paste README, into
+Bundles each component under `components/business/**` into its **own** paste-ready folder —
+`dist/outsystems/<ComponentName>/<ComponentName>.js` + `.css` — plus a shared
+`<Namespace>-Shared.js`, a cascade-accurate `verify.html`, and a paste README, into
 `dist/outsystems/` (gitignored — re-run rather than editing).
 
 ```bash
 npx flowmo block:build
 ```
 
-OutSystems can't host ES modules, so each component's `export function render(props)` is stripped
-and wrapped in its own IIFE on `window.<Namespace>.render<ComponentName>`. CSS is never built —
-`components/<name>/index.css` targets that component's Block Style Sheet, `theme/theme.css`
-targets the module Theme, and `screens/<name>/index.css` targets that Screen's Style Sheet, so the
-generated README just tells you what pastes where.
+OutSystems can't host ES modules, so each component gets its `export` stripped and wrapped in its
+own IIFE. One folder per component, not one shared bundle: Service Studio doesn't diff or merge a
+pasted Script resource, so keeping each component in its own file means two developers working on
+different components never touch the same generated file. CSS isn't transformed, but it **is**
+copied into `dist/outsystems/` (each component's own `<Name>.css`, `theme.css`, each screen's own
+CSS under `screens/`) so the whole paste payload is one self-contained folder — the generated
+README tells you what pastes where. Every generated file starts with a `flowmo:build <hash> ·
+<timestamp>` drift-detection banner.
+
+**Two component contracts, both supported:**
+
+- **`class` (recommended for new components)** — `export class Name extends Component` (import
+  `Component` from `components/shared/Component.js`, which ships in every scaffold). One contract,
+  two levels of ceremony: override just `render()` for a presentational component, or also
+  `validate()`/`attachEvents()`/`update()` for an interactive one — validation, events, and
+  interaction state all live in the component; OutSystems just receives clean events. See
+  `create-flowmo`'s `outsystems-ui` skill, `references/business-components.md`, for the full
+  contract, the state-preservation rule, and the exact `OnReady`/`OnParametersChanged`/`OnDestroy`
+  mapping (a `window.<Namespace>.instances` registry, not a Block Local Variable — there's no
+  `$block` object a JS node can use for that, confirmed against a live ODC app).
+- **`function` (legacy)** — `export function render(props)`, unchanged from earlier releases.
+  Still fully supported so existing components don't need to migrate all at once; not the
+  recommended shape for new components.
+
+`block:build` detects which contract each component uses and bundles/documents it accordingly —
+a project can mix both during a migration. The console output and generated README both show each
+component's contract.
 
 **Config** (optional, in `package.json`):
 ```json
@@ -165,6 +188,15 @@ generated README just tells you what pastes where.
 ```
 `namespace` defaults to a PascalCase form of the package name; `iconLibrary` (`"font-awesome"` or
 `"phosphor"`) is used only for the generic `verify.html` fallback's icon CDN link.
+
+**Shared code:** anything under `components/shared/*.js` (besides `Component.js`, which is special
+— see below) bundles once into `<Namespace>-Shared.js`, exposed as `window.<Namespace>.Shared.*`. A
+component imports it the normal way — `import { esc } from '../../shared/esc.js';` — and
+`block:build` rewrites that import to a global reference in the bundled output; local dev keeps the
+real ES import. `Component` itself is exposed directly as `window.<Namespace>.Component`, not
+nested under `.Shared` — `class X extends Component` evaluates at parse time, so
+`<Namespace>-Shared.js` must be pasted (and load) before any component that extends it, and
+`block:build` always emits it as the one Script resource every component depends on.
 
 **Demo data:** add `components/business/<name>/demo.js` (default export) so a Block can render a
 real layout before any aggregate is wired up. Without it, that component's demo data is `{}`.
@@ -202,7 +234,7 @@ To get full fidelity, capture your live app's real DOM (view-source or your brow
 ```
 
 **Interactions:** if `scripts/prototype-interactions.js` exists, it's copied to
-`dist/outsystems/<Namespace>-interactions.js` and wired in as a second Script resource — a demo
+`dist/outsystems/<Namespace>-Interactions.js` and wired in as a second Script resource — a demo
 aid, not the final implementation. Each interaction it drives should eventually become a real
 platform widget.
 

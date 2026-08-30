@@ -22,6 +22,43 @@ function writeComponent(proj, name, { render = true, css = true, demo = null, ex
   if (demo) fs.writeFileSync(path.join(dir, 'demo.js'), demo);
 }
 
+// A minimal but real copy of the shared Component.js (not the full template
+// file — just enough to exercise the runtime contract in these tests).
+const COMPONENT_JS_SOURCE = `export class Component {
+  constructor({ target, props = {}, onEvent = () => {} }) {
+    this.target = target;
+    this.props = props;
+    this.onEvent = onEvent;
+  }
+  mount() {
+    this.render();
+    this.attachEvents();
+    return this;
+  }
+  render() {}
+  update(nextProps) { this.props = { ...this.props, ...nextProps }; this.render(); }
+  attachEvents() {}
+  destroy() { this.target.innerHTML = ''; }
+  esc(s) { return String(s ?? '').replace(/&/g, '&amp;'); }
+}
+`;
+
+function writeSharedComponentJs(proj) {
+  fs.mkdirSync(path.join(proj, 'components/shared'), { recursive: true });
+  fs.writeFileSync(path.join(proj, 'components/shared/Component.js'), COMPONENT_JS_SOURCE);
+}
+
+function writeClassComponent(proj, name, className, { css = true, demo = null, extraRender = '' } = {}) {
+  const dir = path.join(proj, 'components/business', name);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, 'index.js'),
+    `import { Component } from '../../shared/Component.js';\n\nexport class ${className} extends Component {\n  render() {\n    this.target.innerHTML = '<div class="${name}">' + this.esc(this.props.label || '') + '</div>';${extraRender}\n  }\n}\n`
+  );
+  if (css) fs.writeFileSync(path.join(dir, 'index.css'), `.${name} { color: blue; }\n`);
+  if (demo) fs.writeFileSync(path.join(dir, 'demo.js'), demo);
+}
+
 describe('block:build', () => {
   let proj;
 
@@ -87,7 +124,7 @@ describe('block:build', () => {
     expect(readme).toContain('JobNavRail/JobNavRail.css');
     expect(readme).toContain('EfmCargo-Shared.js');
     expect(readme).not.toContain('| `theme/outsystems-ui.css`'); // never a paste target
-    expect(readme).toContain('| Component | Script resource | Style Sheet |'); // table header present
+    expect(readme).toContain('| Component | Contract | Script resource | Style Sheet |'); // table header present
   });
 
   it('respects an explicit namespace and iconLibrary config', () => {
@@ -244,5 +281,100 @@ describe('block:build', () => {
     fs.writeFileSync(path.join(proj, 'theme/verify-shell.html'), '<html><body></body></html>\n');
 
     expect(() => execSync(`node "${CLI}" block:build`, { cwd: proj, stdio: 'pipe' })).toThrow();
+  });
+
+  // ── Phase 2: the class contract ──────────────────────────────────────
+
+  describe('class contract (Phase 2)', () => {
+    it('bundles a class component under window.<NS>.<Name> (no "render" prefix), exposes Component directly (not under .Shared)', () => {
+      fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'efm-cargo' }));
+      writeSharedComponentJs(proj);
+      writeClassComponent(proj, 'job-nav-rail', 'JobNavRail', { demo: `export default { label: 'hi' };\n` });
+
+      const out = execSync(`node "${CLI}" block:build`, { cwd: proj, encoding: 'utf-8' });
+      expect(out).toContain('(class)');
+
+      const outDir = path.join(proj, 'dist/outsystems');
+      const js = fs.readFileSync(path.join(outDir, 'JobNavRail/JobNavRail.js'), 'utf-8');
+      expect(js).toContain('window.EfmCargo.JobNavRail = (function () {');
+      expect(js).not.toContain('window.EfmCargo.renderJobNavRail');
+      expect(js).toContain('const Component = window.EfmCargo.Component;');
+      expect(js).not.toContain('window.EfmCargo.Shared;'); // Component is NOT under .Shared
+      expect(js).toContain('return JobNavRail;');
+      expect(js).toContain('window.EfmCargo.instances[$parameters.ContainerId]'); // OnReady snippet in header
+      expect(js).toContain('OnParametersChanged: window.EfmCargo.instances[$parameters.ContainerId]?.update');
+      expect(js).toContain('OnDestroy:           window.EfmCargo.instances[$parameters.ContainerId]?.destroy();');
+
+      const shared = fs.readFileSync(path.join(outDir, 'EfmCargo-Shared.js'), 'utf-8');
+      expect(shared).toContain('window.EfmCargo.Component = Component;');
+      expect(shared).toContain('class Component {');
+
+      const readme = fs.readFileSync(path.join(outDir, 'README.md'), 'utf-8');
+      expect(readme).toContain('| **JobNavRail** | class |');
+      expect(readme).toContain('`class` contract components also need OnParametersChanged and OnDestroy wired');
+    });
+
+    it('actually runs at runtime: instantiate, mount, update, destroy, via the instances registry', () => {
+      fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'efm-cargo' }));
+      writeSharedComponentJs(proj);
+      writeClassComponent(proj, 'job-nav-rail', 'JobNavRail');
+
+      execSync(`node "${CLI}" block:build`, { cwd: proj, stdio: 'pipe' });
+
+      const outDir = path.join(proj, 'dist/outsystems');
+      const sharedJs = fs.readFileSync(path.join(outDir, 'EfmCargo-Shared.js'), 'utf-8');
+      const componentJs = fs.readFileSync(path.join(outDir, 'JobNavRail/JobNavRail.js'), 'utf-8');
+
+      const sandbox = {};
+      sandbox.window = sandbox;
+      sandbox.document = {
+        getElementById: () => ({ innerHTML: '' }),
+      };
+      // eslint-disable-next-line no-new-func
+      const run = new Function('window', 'document', `${sharedJs}\n${componentJs}\nreturn window;`);
+      const w = run(sandbox, sandbox.document);
+
+      const target = { innerHTML: '<stale>' };
+      const instance = new w.EfmCargo.JobNavRail({ target, props: { label: 'A & B' } }).mount();
+      expect(target.innerHTML).toContain('A &amp; B');
+
+      instance.update({ label: 'updated' });
+      expect(target.innerHTML).toContain('updated');
+
+      instance.destroy();
+      expect(target.innerHTML).toBe('');
+    });
+
+    it('mixes function- and class-contract components in the same build', () => {
+      fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'efm-cargo' }));
+      writeSharedComponentJs(proj);
+      writeComponent(proj, 'job-chat');
+      writeClassComponent(proj, 'job-nav-rail', 'JobNavRail');
+
+      execSync(`node "${CLI}" block:build`, { cwd: proj, stdio: 'pipe' });
+
+      const outDir = path.join(proj, 'dist/outsystems');
+      const readme = fs.readFileSync(path.join(outDir, 'README.md'), 'utf-8');
+      expect(readme).toContain('| **JobChat** | function |');
+      expect(readme).toContain('| **JobNavRail** | class |');
+
+      // verify.html's generic fallback mounts each with the right call
+      const verify = fs.readFileSync(path.join(outDir, 'verify.html'), 'utf-8');
+      expect(verify).toContain("EfmCargo.render('JobChat'"); // function-contract dispatch
+      expect(verify).toContain("new window.EfmCargo.JobNavRail({"); // class-contract instantiation
+    });
+
+    it('warns if the class name does not match the directory-derived component name, but still bundles it', () => {
+      fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'efm-cargo' }));
+      writeSharedComponentJs(proj);
+      writeClassComponent(proj, 'job-nav-rail', 'WeirdName');
+
+      const out = execSync(`node "${CLI}" block:build`, { cwd: proj, encoding: 'utf-8' });
+      expect(out).toContain('exports class "WeirdName", expected "JobNavRail"');
+
+      const js = fs.readFileSync(path.join(proj, 'dist/outsystems/JobNavRail/JobNavRail.js'), 'utf-8');
+      expect(js).toContain('window.EfmCargo.JobNavRail = (function () {');
+      expect(js).toContain('return WeirdName;');
+    });
   });
 });
