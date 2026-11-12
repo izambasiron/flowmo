@@ -181,7 +181,7 @@ component's contract.
 ```json
 {
   "flowmo": {
-    "namespace": "EFM",
+    "namespace": "Bistro",
     "iconLibrary": "phosphor"
   }
 }
@@ -225,8 +225,8 @@ To get full fidelity, capture your live app's real DOM (view-source or your brow
 </head>
 <!-- copy the real body classes and DOM structure from your live app here -->
 <body class="desktop landscape osx chrome">
-  <div data-flowmo-mount="JobNavRail"></div>
-  <div data-flowmo-mount="JobContextCard"></div>
+  <div data-flowmo-mount="OrderRail"></div>
+  <div data-flowmo-mount="MenuCard"></div>
   <!-- one data-flowmo-mount="ComponentName" per Block you're verifying -->
   <!-- flowmo:scripts -->
 </body>

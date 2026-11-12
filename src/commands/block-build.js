@@ -5,24 +5,23 @@ import { pathToFileURL } from 'url';
 import picocolors from 'picocolors';
 import { readFlowmoConfig, toPascalCase, ICON_CDN } from '../lib/flowmo-config.js';
 
-/* Generalizes the OutSystems-porting pipeline EFM-Cargo hand-built in
-   scripts/build-os-block.js (see flowmo/reviews/2026-08-29-efm-cargo-retro.md
-   §1). OutSystems can't host ES modules, so components written the flowmo way
-   (`export function render(props)`) need bundling before they can be pasted
-   into a module. CSS is never transformed — every stylesheet already targets
-   exactly one destination (component CSS → that Block, theme.css → the
-   Theme, screen CSS → that Screen) — but per
-   flowmo/reviews/2026-08-30-components-plan.md §1.3, it IS copied into
-   dist/outsystems/ so the whole paste payload is one self-contained folder.
+/* Bundles flowmo-style components (`export function render(props)` or
+   `export class Name extends Component`) for pasting into an OutSystems
+   module. OutSystems can't host ES modules, so components need bundling
+   before they can be pasted into a module. CSS is never transformed —
+   every stylesheet already targets exactly one destination (component CSS
+   → that Block, theme.css → the Theme, screen CSS → that Screen) — but it
+   IS copied into dist/outsystems/ so the whole paste payload is one
+   self-contained folder.
 
-   Phase 1 of that plan (§1.1-§1.6): one folder per component instead of one
-   shared bundle — so two developers working on different components never
-   touch the same generated file — plus a components/shared/ bundle for
-   reusable code, analogous to theme.css vs per-component CSS. */
+   One folder per component instead of one shared bundle — so two
+   developers working on different components never touch the same
+   generated file — plus a components/shared/ bundle for reusable code,
+   analogous to theme.css vs per-component CSS. */
 
-// A drift-detection banner (components plan §1.6): a hash of this exact
-// output plus a timestamp, prepended to every generated file. `/* */` is a
-// valid comment in both JS and CSS, so one implementation covers both.
+// A drift-detection banner: a hash of this exact output plus a timestamp,
+// prepended to every generated file. `/* */` is a valid comment in both JS
+// and CSS, so one implementation covers both.
 function versionBanner(content) {
   const hash = crypto.createHash('sha256').update(content).digest('hex').slice(0, 8);
   const stamp = new Date().toISOString();
@@ -82,7 +81,7 @@ function collectExportNames(src) {
 }
 
 // Rewrites `import { a, b } from '<anything>/shared/<file>.js';` to
-// `const { a, b } = window.<NS>.Shared;` — the plan's §1.5 decision: a
+// `const { a, b } = window.<NS>.Shared;` — a deliberate decision: a
 // narrowly-scoped regex pass, not a real bundler, so the "no dependency
 // graph to resolve" property that makes the export-strip-and-wrap transform
 // possible survives. Only named imports pointing into components/shared/
@@ -91,7 +90,7 @@ function collectExportNames(src) {
 // today — that's still a real signal that the component broke the "zero
 // cross-imports" rule in business-components.md.
 //
-// One exception (components plan §1.2/§2.4): Component is exposed directly
+// One exception: Component is exposed directly
 // as window.<NS>.Component, not window.<NS>.Shared.Component — its load
 // order is what makes `class X extends Component` safe at parse time, and
 // that shouldn't be buried a level deep in the general utility namespace.
@@ -165,9 +164,9 @@ window.${namespace}.render = function (name, el, props) {
   return versionBanner(body) + body;
 }
 
-// Components plan §2.7: the class contract (Phase 2) coexists with today's
-// render(props) contract (Phase 1) — §2.5 deliberately doesn't require
-// migrating all components atomically. So the gate has to detect BOTH
+// The class contract (Phase 2) coexists with today's
+// render(props) contract (Phase 1) — nothing requires migrating all
+// components atomically. So the gate has to detect BOTH
 // shapes, not just recognize one.
 const CLASS_EXTENDS_RE = /class\s+(\w+)\s+extends\s+Component\b/;
 
@@ -401,8 +400,8 @@ compare it against what's pasted in Service Studio to spot drift (whoever paste-
 resource last silently wins over anyone else's changes; the banner is what lets you notice).
 
 **The CSS is not transformed**, but unlike source it's no longer referenced in place either — every
-stylesheet is copied into this folder so the whole paste payload is one self-contained folder (see
-the components plan §1.3). Only the JavaScript needs bundling, because OutSystems can't host ES
+stylesheet is copied into this folder so the whole paste payload is one self-contained folder.
+Only the JavaScript needs bundling, because OutSystems can't host ES
 modules.
 
 ## One folder per component — matches Service Studio's per-Block properties

@@ -79,28 +79,28 @@ describe('block:build', () => {
   });
 
   it('bundles a component into its own folder, derives namespace from package.json name, and writes a gitignored generic verify.html', () => {
-    fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'efm-cargo' }));
-    writeComponent(proj, 'job-nav-rail', { demo: `export default { label: 'hi' };\n` });
+    fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'bistro' }));
+    writeComponent(proj, 'order-rail', { demo: `export default { label: 'hi' };\n` });
 
     execSync(`node "${CLI}" block:build`, { cwd: proj, stdio: 'pipe' });
 
     const outDir = path.join(proj, 'dist/outsystems');
     expect(fs.readFileSync(path.join(outDir, '.gitignore'), 'utf-8')).toBe('*\n');
 
-    const js = fs.readFileSync(path.join(outDir, 'JobNavRail/JobNavRail.js'), 'utf-8');
+    const js = fs.readFileSync(path.join(outDir, 'OrderRail/OrderRail.js'), 'utf-8');
     expect(js).toMatch(BANNER_RE);
-    expect(js).toContain('window.EfmCargo.renderJobNavRail = (function () {');
+    expect(js).toContain('window.Bistro.renderOrderRail = (function () {');
     expect(js).not.toContain('export function render'); // export stripped
-    expect(js).toContain('window.EfmCargo.demoData.JobNavRail'); // demoData key
+    expect(js).toContain('window.Bistro.demoData.OrderRail'); // demoData key
     expect(js).toContain('"label": "hi"');
 
-    const css = fs.readFileSync(path.join(outDir, 'JobNavRail/JobNavRail.css'), 'utf-8');
+    const css = fs.readFileSync(path.join(outDir, 'OrderRail/OrderRail.css'), 'utf-8');
     expect(css).toMatch(BANNER_RE);
-    expect(css).toContain('.job-nav-rail { color: red; }');
+    expect(css).toContain('.order-rail { color: red; }');
 
-    const shared = fs.readFileSync(path.join(outDir, 'EfmCargo-Shared.js'), 'utf-8');
+    const shared = fs.readFileSync(path.join(outDir, 'Bistro-Shared.js'), 'utf-8');
     expect(shared).toMatch(BANNER_RE);
-    expect(shared).toContain('window.EfmCargo.render = function');
+    expect(shared).toContain('window.Bistro.render = function');
 
     const theme = fs.readFileSync(path.join(outDir, 'theme.css'), 'utf-8');
     expect(theme).toMatch(BANNER_RE);
@@ -108,11 +108,11 @@ describe('block:build', () => {
 
     const verify = fs.readFileSync(path.join(outDir, 'verify.html'), 'utf-8');
     expect(verify).toContain('Generic fallback harness');
-    expect(verify).toContain('data-flowmo-mount="JobNavRail"');
-    expect(verify).toContain('<script src="./EfmCargo-Shared.js"></script>');
-    expect(verify).toContain('<script src="./JobNavRail/JobNavRail.js"></script>');
+    expect(verify).toContain('data-flowmo-mount="OrderRail"');
+    expect(verify).toContain('<script src="./Bistro-Shared.js"></script>');
+    expect(verify).toContain('<script src="./OrderRail/OrderRail.js"></script>');
     // cascade order: component CSS, then OSUI, then theme, in that order
-    const compIdx = verify.indexOf('JobNavRail/JobNavRail.css');
+    const compIdx = verify.indexOf('OrderRail/OrderRail.css');
     const osuiIdx = verify.indexOf('theme/outsystems-ui.css');
     const themeIdx = verify.indexOf('theme.css');
     expect(compIdx).toBeGreaterThan(-1);
@@ -120,45 +120,45 @@ describe('block:build', () => {
     expect(osuiIdx).toBeLessThan(themeIdx);
 
     const readme = fs.readFileSync(path.join(outDir, 'README.md'), 'utf-8');
-    expect(readme).toContain('JobNavRail/JobNavRail.js');
-    expect(readme).toContain('JobNavRail/JobNavRail.css');
-    expect(readme).toContain('EfmCargo-Shared.js');
+    expect(readme).toContain('OrderRail/OrderRail.js');
+    expect(readme).toContain('OrderRail/OrderRail.css');
+    expect(readme).toContain('Bistro-Shared.js');
     expect(readme).not.toContain('| `theme/outsystems-ui.css`'); // never a paste target
     expect(readme).toContain('| Component | Contract | Script resource | Style Sheet |'); // table header present
   });
 
   it('respects an explicit namespace and iconLibrary config', () => {
     fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({
-      name: 'efm-cargo',
-      flowmo: { namespace: 'EFM', iconLibrary: 'phosphor' },
+      name: 'bistro',
+      flowmo: { namespace: 'Bistro', iconLibrary: 'phosphor' },
     }));
-    writeComponent(proj, 'job-chat');
+    writeComponent(proj, 'order-chat');
 
     execSync(`node "${CLI}" block:build`, { cwd: proj, stdio: 'pipe' });
 
     const outDir = path.join(proj, 'dist/outsystems');
-    expect(fs.existsSync(path.join(outDir, 'JobChat/JobChat.js'))).toBe(true);
-    expect(fs.existsSync(path.join(outDir, 'EFM-Shared.js'))).toBe(true);
+    expect(fs.existsSync(path.join(outDir, 'OrderChat/OrderChat.js'))).toBe(true);
+    expect(fs.existsSync(path.join(outDir, 'Bistro-Shared.js'))).toBe(true);
     const verify = fs.readFileSync(path.join(outDir, 'verify.html'), 'utf-8');
     expect(verify).toContain('phosphor-icons');
   });
 
   it('skips a component with no render export, warns, and still builds the rest', () => {
-    fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'efm-cargo' }));
-    writeComponent(proj, 'job-chat');
+    fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'bistro' }));
+    writeComponent(proj, 'order-chat');
     writeComponent(proj, 'not-a-component', { render: false });
 
     const out = execSync(`node "${CLI}" block:build`, { cwd: proj, encoding: 'utf-8' });
     expect(out).toContain('not-a-component/index.js has no "render" export');
 
     const outDir = path.join(proj, 'dist/outsystems');
-    expect(fs.existsSync(path.join(outDir, 'JobChat/JobChat.js'))).toBe(true);
+    expect(fs.existsSync(path.join(outDir, 'OrderChat/OrderChat.js'))).toBe(true);
     expect(fs.existsSync(path.join(outDir, 'NotAComponent'))).toBe(false);
   });
 
   it('copies screen stylesheets into dist/outsystems/screens/ and lists them in the README', () => {
-    fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'efm-cargo' }));
-    writeComponent(proj, 'job-chat');
+    fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'bistro' }));
+    writeComponent(proj, 'order-chat');
     fs.mkdirSync(path.join(proj, 'screens/general-details'), { recursive: true });
     fs.writeFileSync(path.join(proj, 'screens/general-details/index.css'), '.foo {}\n');
 
@@ -175,50 +175,50 @@ describe('block:build', () => {
   });
 
   it('copies scripts/prototype-interactions.js as a second Script resource when present', () => {
-    fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'efm-cargo' }));
-    writeComponent(proj, 'job-chat');
+    fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'bistro' }));
+    writeComponent(proj, 'order-chat');
     fs.mkdirSync(path.join(proj, 'scripts'), { recursive: true });
     fs.writeFileSync(path.join(proj, 'scripts/prototype-interactions.js'), 'document.addEventListener("click", () => {});\n');
 
     execSync(`node "${CLI}" block:build`, { cwd: proj, stdio: 'pipe' });
 
     const outDir = path.join(proj, 'dist/outsystems');
-    const interactions = fs.readFileSync(path.join(outDir, 'EfmCargo-Interactions.js'), 'utf-8');
+    const interactions = fs.readFileSync(path.join(outDir, 'Bistro-Interactions.js'), 'utf-8');
     expect(interactions).toMatch(BANNER_RE);
     expect(interactions).toContain('addEventListener');
     const verify = fs.readFileSync(path.join(outDir, 'verify.html'), 'utf-8');
-    expect(verify).toContain('EfmCargo-Interactions.js');
+    expect(verify).toContain('Bistro-Interactions.js');
     const readme = fs.readFileSync(path.join(outDir, 'README.md'), 'utf-8');
     expect(readme).toContain('a second module **Script** resource');
   });
 
   it('rewrites a named import from components/shared/ into a window.<NS>.Shared reference', () => {
-    fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'efm-cargo' }));
+    fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'bistro' }));
     fs.mkdirSync(path.join(proj, 'components/shared'), { recursive: true });
     fs.writeFileSync(path.join(proj, 'components/shared/esc.js'), `export function esc(s) {\n  return String(s ?? '').replace(/&/g, '&amp;');\n}\n`);
-    writeComponent(proj, 'job-nav-rail', { extraJs: `import { esc } from '../../shared/esc.js';\n` });
+    writeComponent(proj, 'order-rail', { extraJs: `import { esc } from '../../shared/esc.js';\n` });
 
     execSync(`node "${CLI}" block:build`, { cwd: proj, stdio: 'pipe' });
 
     const outDir = path.join(proj, 'dist/outsystems');
-    const js = fs.readFileSync(path.join(outDir, 'JobNavRail/JobNavRail.js'), 'utf-8');
-    expect(js).toContain('const { esc } = window.EfmCargo.Shared;');
+    const js = fs.readFileSync(path.join(outDir, 'OrderRail/OrderRail.js'), 'utf-8');
+    expect(js).toContain('const { esc } = window.Bistro.Shared;');
     expect(js).not.toContain("import { esc }");
 
-    const shared = fs.readFileSync(path.join(outDir, 'EfmCargo-Shared.js'), 'utf-8');
+    const shared = fs.readFileSync(path.join(outDir, 'Bistro-Shared.js'), 'utf-8');
     expect(shared).toContain('function esc(s)');
-    expect(shared).toContain('window.EfmCargo.Shared.esc = esc;');
+    expect(shared).toContain('window.Bistro.Shared.esc = esc;');
   });
 
   it('injects into a hand-authored theme/verify-shell.html instead of the generic fallback', () => {
-    fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'efm-cargo' }));
-    writeComponent(proj, 'job-chat');
+    fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'bistro' }));
+    writeComponent(proj, 'order-chat');
     fs.writeFileSync(path.join(proj, 'theme/verify-shell.html'), `<!DOCTYPE html>
 <html><head>
 <!-- flowmo:stylesheets -->
 </head>
 <body class="desktop landscape osx chrome">
-  <div data-flowmo-mount="JobChat"></div>
+  <div data-flowmo-mount="OrderChat"></div>
   <!-- flowmo:scripts -->
 </body></html>
 `);
@@ -228,9 +228,9 @@ describe('block:build', () => {
     const verify = fs.readFileSync(path.join(proj, 'dist/outsystems/verify.html'), 'utf-8');
     expect(verify).toContain('class="desktop landscape osx chrome"');
     expect(verify).toContain('theme/outsystems-ui.css');
-    expect(verify).toContain('<script src="./EfmCargo-Shared.js"></script>');
-    expect(verify).toContain('<script src="./JobChat/JobChat.js"></script>');
-    expect(verify).toContain("EfmCargo.render('JobChat'");
+    expect(verify).toContain('<script src="./Bistro-Shared.js"></script>');
+    expect(verify).toContain('<script src="./OrderChat/OrderChat.js"></script>');
+    expect(verify).toContain("Bistro.render('OrderChat'");
     expect(verify).not.toContain('generic fallback harness');
 
     const readme = fs.readFileSync(path.join(proj, 'dist/outsystems/README.md'), 'utf-8');
@@ -238,46 +238,46 @@ describe('block:build', () => {
   });
 
   it('warns (and does not call render for) a shell mount name with no matching built component', () => {
-    fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'efm-cargo' }));
-    writeComponent(proj, 'job-chat');
+    fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'bistro' }));
+    writeComponent(proj, 'order-chat');
     fs.writeFileSync(path.join(proj, 'theme/verify-shell.html'), `<html><head>
 <!-- flowmo:stylesheets -->
 </head><body>
-  <div data-flowmo-mount="JobChat"></div>
-  <div data-flowmo-mount="JobNavRial"></div>
+  <div data-flowmo-mount="OrderChat"></div>
+  <div data-flowmo-mount="OrderRaial"></div>
   <!-- flowmo:scripts -->
 </body></html>
 `);
 
     const out = execSync(`node "${CLI}" block:build`, { cwd: proj, encoding: 'utf-8' });
-    expect(out).toContain('mounts "JobNavRial", but no built component has that name');
+    expect(out).toContain('mounts "OrderRaial", but no built component has that name');
 
     const verify = fs.readFileSync(path.join(proj, 'dist/outsystems/verify.html'), 'utf-8');
-    expect(verify).not.toContain("render('JobNavRial'");
+    expect(verify).not.toContain("render('OrderRaial'");
   });
 
   it('warns when a built component is never mounted in the shell', () => {
-    fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'efm-cargo' }));
-    writeComponent(proj, 'job-chat');
-    writeComponent(proj, 'job-nav-rail');
+    fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'bistro' }));
+    writeComponent(proj, 'order-chat');
+    writeComponent(proj, 'order-rail');
     fs.writeFileSync(path.join(proj, 'theme/verify-shell.html'), `<html><head>
 <!-- flowmo:stylesheets -->
 </head><body>
-  <div data-flowmo-mount="JobChat"></div>
+  <div data-flowmo-mount="OrderChat"></div>
   <!-- flowmo:scripts -->
 </body></html>
 `);
 
     const out = execSync(`node "${CLI}" block:build`, { cwd: proj, encoding: 'utf-8' });
-    expect(out).toContain('JobNavRail is bundled but not mounted anywhere in theme/verify-shell.html');
+    expect(out).toContain('OrderRail is bundled but not mounted anywhere in theme/verify-shell.html');
 
     const readme = fs.readFileSync(path.join(proj, 'dist/outsystems/README.md'), 'utf-8');
-    expect(readme).toContain('JobNavRail is bundled but not mounted anywhere');
+    expect(readme).toContain('OrderRail is bundled but not mounted anywhere');
   });
 
   it('throws a clear error when verify-shell.html is missing a required placeholder', () => {
-    fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'efm-cargo' }));
-    writeComponent(proj, 'job-chat');
+    fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'bistro' }));
+    writeComponent(proj, 'order-chat');
     fs.writeFileSync(path.join(proj, 'theme/verify-shell.html'), '<html><body></body></html>\n');
 
     expect(() => execSync(`node "${CLI}" block:build`, { cwd: proj, stdio: 'pipe' })).toThrow();
@@ -287,43 +287,43 @@ describe('block:build', () => {
 
   describe('class contract (Phase 2)', () => {
     it('bundles a class component under window.<NS>.<Name> (no "render" prefix), exposes Component directly (not under .Shared)', () => {
-      fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'efm-cargo' }));
+      fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'bistro' }));
       writeSharedComponentJs(proj);
-      writeClassComponent(proj, 'job-nav-rail', 'JobNavRail', { demo: `export default { label: 'hi' };\n` });
+      writeClassComponent(proj, 'order-rail', 'OrderRail', { demo: `export default { label: 'hi' };\n` });
 
       const out = execSync(`node "${CLI}" block:build`, { cwd: proj, encoding: 'utf-8' });
       expect(out).toContain('(class)');
 
       const outDir = path.join(proj, 'dist/outsystems');
-      const js = fs.readFileSync(path.join(outDir, 'JobNavRail/JobNavRail.js'), 'utf-8');
-      expect(js).toContain('window.EfmCargo.JobNavRail = (function () {');
-      expect(js).not.toContain('window.EfmCargo.renderJobNavRail');
-      expect(js).toContain('const Component = window.EfmCargo.Component;');
-      expect(js).not.toContain('window.EfmCargo.Shared;'); // Component is NOT under .Shared
-      expect(js).toContain('return JobNavRail;');
-      expect(js).toContain('window.EfmCargo.instances[$parameters.ContainerId]'); // OnReady snippet in header
-      expect(js).toContain('OnParametersChanged: window.EfmCargo.instances[$parameters.ContainerId]?.update');
-      expect(js).toContain('OnDestroy:           window.EfmCargo.instances[$parameters.ContainerId]?.destroy();');
+      const js = fs.readFileSync(path.join(outDir, 'OrderRail/OrderRail.js'), 'utf-8');
+      expect(js).toContain('window.Bistro.OrderRail = (function () {');
+      expect(js).not.toContain('window.Bistro.renderOrderRail');
+      expect(js).toContain('const Component = window.Bistro.Component;');
+      expect(js).not.toContain('window.Bistro.Shared;'); // Component is NOT under .Shared
+      expect(js).toContain('return OrderRail;');
+      expect(js).toContain('window.Bistro.instances[$parameters.ContainerId]'); // OnReady snippet in header
+      expect(js).toContain('OnParametersChanged: window.Bistro.instances[$parameters.ContainerId]?.update');
+      expect(js).toContain('OnDestroy:           window.Bistro.instances[$parameters.ContainerId]?.destroy();');
 
-      const shared = fs.readFileSync(path.join(outDir, 'EfmCargo-Shared.js'), 'utf-8');
-      expect(shared).toContain('window.EfmCargo.Component = Component;');
+      const shared = fs.readFileSync(path.join(outDir, 'Bistro-Shared.js'), 'utf-8');
+      expect(shared).toContain('window.Bistro.Component = Component;');
       expect(shared).toContain('class Component {');
 
       const readme = fs.readFileSync(path.join(outDir, 'README.md'), 'utf-8');
-      expect(readme).toContain('| **JobNavRail** | class |');
+      expect(readme).toContain('| **OrderRail** | class |');
       expect(readme).toContain('`class` contract components also need OnParametersChanged and OnDestroy wired');
     });
 
     it('actually runs at runtime: instantiate, mount, update, destroy, via the instances registry', () => {
-      fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'efm-cargo' }));
+      fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'bistro' }));
       writeSharedComponentJs(proj);
-      writeClassComponent(proj, 'job-nav-rail', 'JobNavRail');
+      writeClassComponent(proj, 'order-rail', 'OrderRail');
 
       execSync(`node "${CLI}" block:build`, { cwd: proj, stdio: 'pipe' });
 
       const outDir = path.join(proj, 'dist/outsystems');
-      const sharedJs = fs.readFileSync(path.join(outDir, 'EfmCargo-Shared.js'), 'utf-8');
-      const componentJs = fs.readFileSync(path.join(outDir, 'JobNavRail/JobNavRail.js'), 'utf-8');
+      const sharedJs = fs.readFileSync(path.join(outDir, 'Bistro-Shared.js'), 'utf-8');
+      const componentJs = fs.readFileSync(path.join(outDir, 'OrderRail/OrderRail.js'), 'utf-8');
 
       const sandbox = {};
       sandbox.window = sandbox;
@@ -335,7 +335,7 @@ describe('block:build', () => {
       const w = run(sandbox, sandbox.document);
 
       const target = { innerHTML: '<stale>' };
-      const instance = new w.EfmCargo.JobNavRail({ target, props: { label: 'A & B' } }).mount();
+      const instance = new w.Bistro.OrderRail({ target, props: { label: 'A & B' } }).mount();
       expect(target.innerHTML).toContain('A &amp; B');
 
       instance.update({ label: 'updated' });
@@ -346,34 +346,34 @@ describe('block:build', () => {
     });
 
     it('mixes function- and class-contract components in the same build', () => {
-      fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'efm-cargo' }));
+      fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'bistro' }));
       writeSharedComponentJs(proj);
-      writeComponent(proj, 'job-chat');
-      writeClassComponent(proj, 'job-nav-rail', 'JobNavRail');
+      writeComponent(proj, 'order-chat');
+      writeClassComponent(proj, 'order-rail', 'OrderRail');
 
       execSync(`node "${CLI}" block:build`, { cwd: proj, stdio: 'pipe' });
 
       const outDir = path.join(proj, 'dist/outsystems');
       const readme = fs.readFileSync(path.join(outDir, 'README.md'), 'utf-8');
-      expect(readme).toContain('| **JobChat** | function |');
-      expect(readme).toContain('| **JobNavRail** | class |');
+      expect(readme).toContain('| **OrderChat** | function |');
+      expect(readme).toContain('| **OrderRail** | class |');
 
       // verify.html's generic fallback mounts each with the right call
       const verify = fs.readFileSync(path.join(outDir, 'verify.html'), 'utf-8');
-      expect(verify).toContain("EfmCargo.render('JobChat'"); // function-contract dispatch
-      expect(verify).toContain("new window.EfmCargo.JobNavRail({"); // class-contract instantiation
+      expect(verify).toContain("Bistro.render('OrderChat'"); // function-contract dispatch
+      expect(verify).toContain("new window.Bistro.OrderRail({"); // class-contract instantiation
     });
 
     it('warns if the class name does not match the directory-derived component name, but still bundles it', () => {
-      fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'efm-cargo' }));
+      fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'bistro' }));
       writeSharedComponentJs(proj);
-      writeClassComponent(proj, 'job-nav-rail', 'WeirdName');
+      writeClassComponent(proj, 'order-rail', 'WeirdName');
 
       const out = execSync(`node "${CLI}" block:build`, { cwd: proj, encoding: 'utf-8' });
-      expect(out).toContain('exports class "WeirdName", expected "JobNavRail"');
+      expect(out).toContain('exports class "WeirdName", expected "OrderRail"');
 
-      const js = fs.readFileSync(path.join(proj, 'dist/outsystems/JobNavRail/JobNavRail.js'), 'utf-8');
-      expect(js).toContain('window.EfmCargo.JobNavRail = (function () {');
+      const js = fs.readFileSync(path.join(proj, 'dist/outsystems/OrderRail/OrderRail.js'), 'utf-8');
+      expect(js).toContain('window.Bistro.OrderRail = (function () {');
       expect(js).toContain('return WeirdName;');
     });
   });
