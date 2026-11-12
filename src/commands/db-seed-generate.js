@@ -55,7 +55,7 @@ function parseTable(sql) {
 /**
  * Generate a plausible value for a column based on its name and type.
  */
-function generateValue(col, rowIndex) {
+export function generateValue(col, rowIndex) {
   const { name, type, isFk, isNullable } = col;
 
   // Skip serial/auto-increment columns
@@ -66,6 +66,13 @@ function generateValue(col, rowIndex) {
 
   // Foreign keys: random ID in 1-20 range
   if (isFk) return String(Math.floor(Math.random() * 20) + 1);
+
+  // Booleans. Older schemas have a real BOOLEAN column. A pulled ODC schema
+  // stores Boolean as NUMERIC(28,8), indistinguishable by type from a Decimal,
+  // so fall back to the usual OutSystems naming (IsActive, HasStock, CanEdit).
+  if (/BOOL/i.test(type)) return Math.random() > 0.5 ? 'true' : 'false';
+  if (/^(is|has|can)_/i.test(name) && /INTEGER|BIGINT|NUMERIC|DECIMAL/i.test(type))
+    return Math.random() > 0.5 ? '1' : '0';
 
   // By column name
   const lower = name.toLowerCase();
@@ -87,7 +94,6 @@ function generateValue(col, rowIndex) {
   if (/TEXT/i.test(type)) return `'value_${rowIndex + 1}'`;
   if (/INTEGER|BIGINT|NUMERIC|DECIMAL/i.test(type))
     return String(Math.floor(Math.random() * 100) + 1);
-  if (/BOOLEAN/i.test(type)) return Math.random() > 0.5 ? 'true' : 'false';
   if (/TIMESTAMP|DATE/i.test(type))
     return `'2026-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')}'`;
 

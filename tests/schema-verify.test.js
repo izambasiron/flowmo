@@ -111,6 +111,61 @@ describe('schema:verify', () => {
     expect(status).toBe(0);
   });
 
+  it('does not false-flag a multi-hop FK whose target key is itself an FK', () => {
+    fs.writeFileSync(
+      path.join(proj, 'database/schema.local.sql'),
+      'CREATE TABLE menu_photo (\n  id BIGSERIAL PRIMARY KEY,\n  profile_id BIGINT NOT NULL REFERENCES restaurant_profile(id)\n);\n'
+    );
+    const fresh = [
+      { key: 'r', name: 'Restaurant', additionalData: { attributes: [
+        { name: 'Id', dataType: 'Long Integer', isMandatory: true, isPrimaryKey: true },
+      ] } },
+      { key: 'rp', name: 'RestaurantProfile', additionalData: { attributes: [
+        { name: 'Id', dataType: 'Restaurant Identifier', isMandatory: true, isPrimaryKey: true, foreignKey: { entityKey: 'r' } },
+      ] } },
+      { key: 'mp', name: 'MenuPhoto', additionalData: { attributes: [
+        { name: 'Id', dataType: 'Long Integer', isMandatory: true, isPrimaryKey: true },
+        { name: 'ProfileId', dataType: 'RestaurantProfile Identifier', isMandatory: true, isPrimaryKey: false, foreignKey: { entityKey: 'rp' } },
+      ] } },
+    ];
+    const { stdout, status } = runVerify(writeFresh(fresh));
+    const { report } = JSON.parse(stdout);
+    expect(report.find((r) => r.table === 'menu_photo').status).toBe('confirmed');
+    expect(status).toBe(0);
+  });
+
+  it('accepts the older BOOLEAN / DATE spellings for Boolean and Date attributes', () => {
+    fs.writeFileSync(
+      path.join(proj, 'database/schema.local.sql'),
+      'CREATE TABLE dish (\n  id BIGSERIAL PRIMARY KEY,\n  is_vegetarian BOOLEAN NOT NULL,\n  available_from DATE\n);\n'
+    );
+    const fresh = [{ key: 'd', name: 'Dish', additionalData: { attributes: [
+      { name: 'Id', dataType: 'Long Integer', isMandatory: true, isPrimaryKey: true },
+      { name: 'IsVegetarian', dataType: 'Boolean', isMandatory: true, isPrimaryKey: false },
+      { name: 'AvailableFrom', dataType: 'Date', isMandatory: false, isPrimaryKey: false },
+    ] } }];
+    const { stdout, status } = runVerify(writeFresh(fresh));
+    const { report } = JSON.parse(stdout);
+    expect(report).toEqual([{ table: 'dish', status: 'confirmed', details: [] }]);
+    expect(status).toBe(0);
+  });
+
+  it('still flags a DATE column for a Date Time attribute (DATE would drop the time)', () => {
+    fs.writeFileSync(
+      path.join(proj, 'database/schema.local.sql'),
+      'CREATE TABLE reservation (\n  id BIGSERIAL PRIMARY KEY,\n  booked_for DATE NOT NULL\n);\n'
+    );
+    const fresh = [{ key: 'r', name: 'Reservation', additionalData: { attributes: [
+      { name: 'Id', dataType: 'Long Integer', isMandatory: true, isPrimaryKey: true },
+      { name: 'BookedFor', dataType: 'Date Time', isMandatory: true, isPrimaryKey: false },
+    ] } }];
+    const { stdout, status } = runVerify(writeFresh(fresh));
+    const { report } = JSON.parse(stdout);
+    expect(report[0].status).toBe('attribute mismatch');
+    expect(report[0].details.some((d) => d.includes('booked_for'))).toBe(true);
+    expect(status).not.toBe(0);
+  });
+
   it('does not false-flag Postgres type synonyms (INT/VARCHAR) as a mismatch', () => {
     fs.writeFileSync(
       path.join(proj, 'database/schema.local.sql'),
