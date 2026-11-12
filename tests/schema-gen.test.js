@@ -96,9 +96,73 @@ describe('generateSchema', () => {
     const ddl = generateSchema(entities);
     expect(ddl).toContain('REFERENCES "employee"');
   });
+  it('follows an FK through a PK that is itself an FK, down to the base type', () => {
+    // VoyageAir.Id is a "Voyage Identifier" (shared identity); Link.AirVoyageId is a
+    // "VoyageAir Identifier". One hop gives TEXT, which Postgres can't REFERENCE a BIGINT with.
+    const entities = [
+      { key: 'v', name: 'Voyage', attrs: [{ name: 'Id', dataType: 'Long Integer', isMandatory: true, isKey: true }] },
+      { key: 'va', name: 'VoyageAir', attrs: [
+        { name: 'Id', dataType: 'Voyage Identifier', isMandatory: true, isKey: true, isForeignKey: true, references: 'v' },
+      ] },
+      { key: 'l', name: 'Link', attrs: [
+        { name: 'Id', dataType: 'Long Integer', isMandatory: true, isKey: true },
+        { name: 'AirVoyageId', dataType: 'VoyageAir Identifier', isMandatory: true, isKey: false, isForeignKey: true, references: 'va' },
+      ] },
+    ];
+    const ddl = generateSchema(entities);
+    const linkTable = ddl.slice(ddl.indexOf('CREATE TABLE "link"'));
+    expect(linkTable).toMatch(/"air_voyage_id"\s+BIGINT\s+NOT NULL\s+REFERENCES "voyage_air"/);
+  });
+
+  it('stops on an FK-of-PK cycle instead of recursing forever', () => {
+    const entities = [
+      { key: 'a', name: 'A', attrs: [{ name: 'Id', dataType: 'B Identifier', isMandatory: true, isKey: true, isForeignKey: true, references: 'b' }] },
+      { key: 'b', name: 'B', attrs: [{ name: 'Id', dataType: 'A Identifier', isMandatory: true, isKey: true, isForeignKey: true, references: 'a' }] },
+    ];
+    expect(() => generateSchema(entities)).not.toThrow();
+  });
+
+  it('gives a non-static entity\'s integer key an auto-number (BIGSERIAL / SERIAL)', () => {
+    const entities = [
+      { key: 'j', name: 'Job', attrs: [{ name: 'Id', dataType: 'Long Integer', isMandatory: true, isKey: true }] },
+      { key: 'n', name: 'Note', attrs: [{ name: 'Id', dataType: 'Integer', isMandatory: true, isKey: true }] },
+    ];
+    const ddl = generateSchema(entities);
+    expect(ddl).toMatch(/CREATE TABLE "job" \(\n  "id" BIGSERIAL NOT NULL PRIMARY KEY/);
+    expect(ddl).toMatch(/CREATE TABLE "note" \(\n  "id" SERIAL NOT NULL PRIMARY KEY/);
+  });
+
+  it('keeps a static entity\'s key, a text key and an FK key as plain columns (no auto-number)', () => {
+    const entities = [
+      { key: 's', name: 'Status', isStatic: true, attrs: [{ name: 'Id', dataType: 'Integer', isMandatory: true, isKey: true }] },
+      { key: 'c', name: 'Currency', attrs: [{ name: 'Code', dataType: 'Text', isMandatory: true, isKey: true }] },
+      { key: 'p', name: 'Parent', attrs: [{ name: 'Id', dataType: 'Long Integer', isMandatory: true, isKey: true }] },
+      { key: 'x', name: 'Extension', attrs: [
+        { name: 'Id', dataType: 'Parent Identifier', isMandatory: true, isKey: true, isForeignKey: true, references: 'p' },
+      ] },
+    ];
+    const ddl = generateSchema(entities);
+    expect(ddl).toMatch(/CREATE TABLE "status" \(\n  "id" INTEGER NOT NULL PRIMARY KEY/);
+    expect(ddl).toMatch(/CREATE TABLE "currency" \(\n  "code" TEXT NOT NULL PRIMARY KEY/);
+    expect(ddl).toMatch(/CREATE TABLE "extension" \(\n  "id" BIGINT NOT NULL PRIMARY KEY REFERENCES "parent"/);
+  });
+
+  it('maps Boolean to numeric and Date to timestamptz, matching live ODC storage', () => {
+    const entities = [
+      { key: 'r', name: 'Rate', isStatic: true, attrs: [
+        { name: 'Id', dataType: 'Integer', isMandatory: true, isKey: true },
+        { name: 'IsActive', dataType: 'Boolean', isMandatory: true, isKey: false },
+        { name: 'ValidFrom', dataType: 'Date', isMandatory: false, isKey: false },
+      ] },
+    ];
+    const ddl = generateSchema(entities);
+    expect(ddl).toContain('"is_active" NUMERIC(28,8) NOT NULL');
+    expect(ddl).toContain('"valid_from" TIMESTAMPTZ');
+  });
 });
 
 describe('toSnakeCase', () => {
+
   it('converts PascalCase to snake_case', () => {
     expect(toSnakeCase('IsActive')).toBe('is_active');
     expect(toSnakeCase('HBAccountName')).toBe('hb_account_name');

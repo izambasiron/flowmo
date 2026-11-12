@@ -52,6 +52,7 @@ describe('transformContextEntities', () => {
     const { entities } = transformContextEntities(staticEntity);
     expect(entities).toHaveLength(1);
     expect(entities[0].attrs).toHaveLength(1);
+    expect(entities[0].isStatic).toBe(true);
   });
 
   it('skips an entity with zero attributes and warns, rather than emitting an empty table', () => {

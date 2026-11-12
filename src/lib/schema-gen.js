@@ -14,9 +14,9 @@ export const TYPE_MAP = {
   'Integer':            'INTEGER',
   'Long Integer':       'BIGINT',
   'Decimal':            'NUMERIC(28,8)',
-  'Boolean':            'BOOLEAN',
+  'Boolean':            'NUMERIC(28,8)', // live ODC stores Boolean as numeric 1/0 (checked on Dev, 12 Nov 2026)
   'Date Time':          'TIMESTAMPTZ',
-  'Date':               'DATE',
+  'Date':               'TIMESTAMPTZ',   // live ODC stores Date as timestamptz (checked on Dev, 12 Nov 2026)
   'Time':               'TIME',
   'Binary Data':        'BYTEA',
   'Currency':           'NUMERIC(28,8)',
@@ -35,6 +35,22 @@ export function toSnakeCase(str) {
 
 function pgType(dataType) {
   return TYPE_MAP[dataType] ?? 'TEXT';
+}
+
+/**
+ * Type of an FK column = type of the referenced entity's primary key, followed
+ * through as many hops as needed. A PK can itself be an FK (shared-identity
+ * pattern: VoyageAir.MainVoyageId is a "Voyage Identifier"), so stopping after
+ * one hop maps "VoyageAir Identifier" to TEXT while the real key is BIGINT, and
+ * Postgres then rejects the REFERENCES clause ("cannot be implemented").
+ */
+function resolveRefType(attr, keyToEntity, seen = new Set()) {
+  if (!attr.references || seen.has(attr.references)) return pgType(attr.dataType);
+  seen.add(attr.references);
+  const refEntity = keyToEntity.get(attr.references);
+  const pkAttr = refEntity?.attrs.find((a) => a.isKey);
+  if (!pkAttr) return pgType(attr.dataType);
+  return pkAttr.references ? resolveRefType(pkAttr, keyToEntity, seen) : pgType(pkAttr.dataType);
 }
 
 /**
@@ -120,17 +136,19 @@ export function generateSchema(entities) {
       let type = pgType(attr.dataType);
       const notNull = attr.isMandatory || attr.isKey ? ' NOT NULL' : '';
       const pk = attr.isKey ? ' PRIMARY KEY' : '';
+      // Auto-number: OutSystems gives a non-static entity's integer Id an auto-number by default. Without
+      // this a seed/insert that omits the id fails on NOT NULL (the old Forge pull emitted BIGSERIAL).
+      if (attr.isKey && !attr.references && !entity.isStatic) {
+        if (type === 'BIGINT') type = 'BIGSERIAL';
+        else if (type === 'INTEGER') type = 'SERIAL';
+      }
       let ref = '';
       // A PK can also be an FK (an entity-extension / shared-identity
       // pattern: Child.Id both PRIMARY KEY and REFERENCES Parent.Id — valid
       // Postgres syntax) — don't gate this on !attr.isKey, or that column
       // silently loses both its inherited type and its REFERENCES clause.
       if (attr.references) {
-        const refEntity = keyToEntity.get(attr.references);
-        if (refEntity) {
-          const pkAttr = refEntity.attrs.find((a) => a.isKey);
-          if (pkAttr) type = pgType(pkAttr.dataType);
-        }
+        type = resolveRefType(attr, keyToEntity);
         const isBackEdge = skippedRefs.has(`${entity.key}::${attr.name}`);
         const target = keyToLocalName.get(attr.references);
         if (target && !isBackEdge) ref = ` REFERENCES ${target}`;

@@ -69,6 +69,9 @@ export function transformContextEntities(rawEntities) {
     return {
       key: raw.key,
       name: raw.name,
+      // Static entities have fixed ids; non-static ones get auto-number ids by default. context_entities
+      // has no per-attribute isAutoNumber, so schema-gen uses this to decide SERIAL/BIGSERIAL.
+      isStatic: Boolean(raw.isStatic),
       isReferenced: Boolean(raw.isReferenced),
       producerAssetName: raw.producerAssetName ?? null,
       attrs,
