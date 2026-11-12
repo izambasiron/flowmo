@@ -117,6 +117,143 @@ WHERE {Users}.[Id] = @UserId AND {Users}.[IsActive] = @Status
 (1 row)
 ```
 
+### `flowmo screen:create <dir-name>`
+
+Scaffolds a new screen: `index.visual.html` (wired to the layout component of your choice),
+`queries.js`, `index.test.js`, `README.md`, and a `mockups/` folder.
+
+```bash
+npx flowmo screen:create project-detail --layout side --ticket PROJ-354 --title "Project Detail"
+```
+
+| Flag | Default | |
+|---|---|---|
+| `--layout` | `top` | `top`, `side`, `base`, or `blank` |
+| `--ticket` | _(none)_ | reference shown in the generated README |
+| `--title` | derived from `<dir-name>` | display title |
+| `--module` | _(none)_ | OutSystems module name, shown in the generated README |
+| `--force` | off | overwrite an existing `screens/<dir-name>/` |
+
+The scaffolded `<head>` links the icon CDN from `{ "flowmo": { "iconLibrary" } }` in `package.json`
+(`"font-awesome"`, the default, or `"phosphor"`) — set once via `create-flowmo`'s scaffold prompt,
+or by hand in an existing project, instead of swapping the link after every new screen.
+
+### `flowmo block:build`
+
+Bundles each component under `components/business/**` into its **own** paste-ready folder —
+`dist/outsystems/<ComponentName>/<ComponentName>.js` + `.css` — plus a shared
+`<Namespace>-Shared.js`, a cascade-accurate `verify.html`, and a paste README, into
+`dist/outsystems/` (gitignored — re-run rather than editing).
+
+```bash
+npx flowmo block:build
+```
+
+OutSystems can't host ES modules, so each component gets its `export` stripped and wrapped in its
+own IIFE. One folder per component, not one shared bundle: Service Studio doesn't diff or merge a
+pasted Script resource, so keeping each component in its own file means two developers working on
+different components never touch the same generated file. CSS isn't transformed, but it **is**
+copied into `dist/outsystems/` (each component's own `<Name>.css`, `theme.css`, each screen's own
+CSS under `screens/`) so the whole paste payload is one self-contained folder — the generated
+README tells you what pastes where. Every generated file starts with a `flowmo:build <hash> ·
+<timestamp>` drift-detection banner.
+
+**Two component contracts, both supported:**
+
+- **`class` (recommended for new components)** — `export class Name extends Component` (import
+  `Component` from `components/shared/Component.js`, which ships in every scaffold). One contract,
+  two levels of ceremony: override just `render()` for a presentational component, or also
+  `validate()`/`attachEvents()`/`update()` for an interactive one — validation, events, and
+  interaction state all live in the component; OutSystems just receives clean events. See
+  `create-flowmo`'s `outsystems-ui` skill, `references/business-components.md`, for the full
+  contract, the state-preservation rule, and the exact `OnReady`/`OnParametersChanged`/`OnDestroy`
+  mapping (a `window.<Namespace>.instances` registry, not a Block Local Variable — there's no
+  `$block` object a JS node can use for that, confirmed against a live ODC app).
+- **`function` (legacy)** — `export function render(props)`, unchanged from earlier releases.
+  Still fully supported so existing components don't need to migrate all at once; not the
+  recommended shape for new components.
+
+`block:build` detects which contract each component uses and bundles/documents it accordingly —
+a project can mix both during a migration. The console output and generated README both show each
+component's contract.
+
+**Config** (optional, in `package.json`):
+```json
+{
+  "flowmo": {
+    "namespace": "Bistro",
+    "iconLibrary": "phosphor"
+  }
+}
+```
+`namespace` defaults to a PascalCase form of the package name; `iconLibrary` (`"font-awesome"` or
+`"phosphor"`) is used only for the generic `verify.html` fallback's icon CDN link.
+
+**Shared code:** anything under `components/shared/*.js` (besides `Component.js`, which is special
+— see below) bundles once into `<Namespace>-Shared.js`, exposed as `window.<Namespace>.Shared.*`. A
+component imports it the normal way — `import { esc } from '../../shared/esc.js';` — and
+`block:build` rewrites that import to a global reference in the bundled output; local dev keeps the
+real ES import. `Component` itself is exposed directly as `window.<Namespace>.Component`, not
+nested under `.Shared` — `class X extends Component` evaluates at parse time, so
+`<Namespace>-Shared.js` must be attached above every component's Script resource, and
+`block:build` always emits it as the one Script resource every component depends on.
+
+Shared files may import each other with a relative named import (`import { esc } from
+'./esc.js';`): they're concatenated into one scope, so `block:build` drops those imports and emits
+each file after the files it imports. Any other import in a shared file stops the build. In a
+component, an import that isn't a named import from `components/shared/`, an `export default`, or
+a folder named `shared` or `component` (which would overwrite `window.<Namespace>.Shared` /
+`.Component`) is reported and that component is skipped. A `flowmo.namespace` that isn't a valid
+JavaScript identifier stops the build.
+
+Two shared files that import each other are bundled anyway, with a warning: a function used across
+the cycle works, but a class the other file uses while loading (`extends`, a static field) fails if
+it's defined later, as it would with real ES modules.
+
+`block:build` reads imports and exports line by line, not with a JavaScript parser. Inside a
+multi-line string (a template literal), don't start a line with `import` or `export`: it would be
+treated as a real import or export, and could be removed from the string or stop the build.
+
+**Demo data:** add `components/business/<name>/demo.js` (default export) so a Block can render a
+real layout before any aggregate is wired up. Without it, that component's demo data is `{}`.
+
+**`verify.html` fidelity:** if `theme/verify-shell.html` exists — a hand-authored file with the
+real DOM/body-classes sampled from your live app, elements marked `data-flowmo-mount="Name"`, and
+`<!-- flowmo:stylesheets -->` / `<!-- flowmo:scripts -->` placeholders — `block:build` injects the
+correctly-ordered stylesheets and mount script into it, and warns (without failing) if a mount
+name doesn't match any built component, or if a built component isn't mounted anywhere in the
+shell — a component the shell forgot to mount would otherwise never be exercised by `verify.html`
+at all, silently. Without a shell, it falls back to a generic minimal harness: still loads Block
+CSS → `outsystems-ui.css` → Theme → Screen in the real cascade order (see `outsystems-ui`'s
+`architectural-heuristics.md` in `create-flowmo`), so it still catches cascade/specificity bugs,
+but it won't catch anything that depends on the real live DOM shape.
+
+To get full fidelity, capture your live app's real DOM (view-source or your browser devtools) into
+`theme/verify-shell.html`, e.g.:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- your live app's real fonts/icon-library <link>s go here -->
+  <!-- flowmo:stylesheets -->
+</head>
+<!-- copy the real body classes and DOM structure from your live app here -->
+<body class="desktop landscape osx chrome">
+  <div data-flowmo-mount="OrderRail"></div>
+  <div data-flowmo-mount="MenuCard"></div>
+  <!-- one data-flowmo-mount="ComponentName" per Block you're verifying -->
+  <!-- flowmo:scripts -->
+</body>
+</html>
+```
+
+**Interactions:** if `scripts/prototype-interactions.js` exists, it's copied to
+`dist/outsystems/<Namespace>-Interactions.js` and wired in as a second Script resource — a demo
+aid, not the final implementation. Each interaction it drives should eventually become a real
+platform widget.
+
 ## Project Structure
 
 A scaffolded Flowmo project looks like this:
