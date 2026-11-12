@@ -150,6 +150,22 @@ describe('schema:verify', () => {
     expect(status).toBe(0);
   });
 
+  it('still flags a DATE column for a Date Time attribute (DATE would drop the time)', () => {
+    fs.writeFileSync(
+      path.join(proj, 'database/schema.local.sql'),
+      'CREATE TABLE reservation (\n  id BIGSERIAL PRIMARY KEY,\n  booked_for DATE NOT NULL\n);\n'
+    );
+    const fresh = [{ key: 'r', name: 'Reservation', additionalData: { attributes: [
+      { name: 'Id', dataType: 'Long Integer', isMandatory: true, isPrimaryKey: true },
+      { name: 'BookedFor', dataType: 'Date Time', isMandatory: true, isPrimaryKey: false },
+    ] } }];
+    const { stdout, status } = runVerify(writeFresh(fresh));
+    const { report } = JSON.parse(stdout);
+    expect(report[0].status).toBe('attribute mismatch');
+    expect(report[0].details.some((d) => d.includes('booked_for'))).toBe(true);
+    expect(status).not.toBe(0);
+  });
+
   it('does not false-flag Postgres type synonyms (INT/VARCHAR) as a mismatch', () => {
     fs.writeFileSync(
       path.join(proj, 'database/schema.local.sql'),

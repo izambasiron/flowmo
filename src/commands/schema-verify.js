@@ -76,12 +76,12 @@ function normalizeType(type) {
   if (/^INT8\b/.test(t)) return 'BIGINT';
   if (/^INT2\b/.test(t)) return 'SMALLINT';
   // Older pulls (and hand-written schemas following the old docs) used
-  // BOOLEAN and DATE; ODC stores these as NUMERIC(28,8) and TIMESTAMPTZ,
-  // which is what TYPE_MAP now emits. Same OutSystems type either way, so
-  // don't report it as a mismatch. (An INTEGER-for-Boolean column can't be
-  // aliased without hiding real Integer/Boolean mismatches; it is reported.)
+  // BOOLEAN for Boolean; ODC stores it as NUMERIC(28,8), which is what
+  // TYPE_MAP now emits, so don't report it as a mismatch. (An
+  // INTEGER-for-Boolean column can't be aliased without hiding real
+  // Integer/Boolean mismatches; it is reported.) The matching DATE alias is
+  // attribute-aware, so it lives in the comparison below, not here.
   if (/^BOOL(EAN)?\b/.test(t)) return 'NUMERIC(28,8)';
-  if (/^DATE\b/.test(t)) return 'TIMESTAMPTZ';
 
   return t.split(/\s+/)[0];
 }
@@ -133,7 +133,10 @@ export async function schemaVerify(rawArgs = []) {
         continue;
       }
       const expected = normalizeType(resolvedAttrType(attr, entitiesByKey));
-      const actual = normalizeType(col.type);
+      let actual = normalizeType(col.type);
+      // A legacy DATE column is fine for a Date attribute (ODC stores it as
+      // timestamptz), but not for a Date Time one: DATE drops the time.
+      if (actual === 'DATE' && attr.dataType === 'Date') actual = 'TIMESTAMPTZ';
       if (expected !== actual) {
         details.push(`${col.name}: local ${actual} vs remote ${expected}`);
       }
