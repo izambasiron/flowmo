@@ -3,7 +3,7 @@ import path from 'path';
 import Table from 'cli-table3';
 import picocolors from 'picocolors';
 import { transformContextEntities } from '../lib/context-entities.js';
-import { toSnakeCase, TYPE_MAP } from '../lib/schema-gen.js';
+import { toSnakeCase, TYPE_MAP, resolveRefType } from '../lib/schema-gen.js';
 import { parseCreateTables } from '../lib/schema-local-parser.js';
 
 function resolveFile(filename) {
@@ -38,11 +38,9 @@ function resolvedAttrType(attr, entitiesByKey) {
   // Mirrors schema-gen.js's generateSchema(): a PK can also be an FK, so
   // this isn't gated on !attr.isKey — that column's real emitted type
   // still comes from the referenced entity's PK, not its own dataType.
-  if (attr.isForeignKey && attr.references) {
-    const target = entitiesByKey.get(attr.references);
-    const pkAttr = target?.attrs.find((a) => a.isKey);
-    if (pkAttr) return pgType(pkAttr.dataType);
-  }
+  // Uses the same chain-following resolver, so a key that is itself an FK
+  // (shared identity) resolves to the same base type generateSchema emits.
+  if (attr.isForeignKey && attr.references) return resolveRefType(attr, entitiesByKey);
   return pgType(attr.dataType);
 }
 
@@ -77,7 +75,13 @@ function normalizeType(type) {
   if (/^INT4?\b/.test(t)) return 'INTEGER';
   if (/^INT8\b/.test(t)) return 'BIGINT';
   if (/^INT2\b/.test(t)) return 'SMALLINT';
-  if (/^BOOL\b/.test(t)) return 'BOOLEAN';
+  // Older pulls (and hand-written schemas following the old docs) used
+  // BOOLEAN and DATE; ODC stores these as NUMERIC(28,8) and TIMESTAMPTZ,
+  // which is what TYPE_MAP now emits. Same OutSystems type either way, so
+  // don't report it as a mismatch. (An INTEGER-for-Boolean column can't be
+  // aliased without hiding real Integer/Boolean mismatches; it is reported.)
+  if (/^BOOL(EAN)?\b/.test(t)) return 'NUMERIC(28,8)';
+  if (/^DATE\b/.test(t)) return 'TIMESTAMPTZ';
 
   return t.split(/\s+/)[0];
 }
