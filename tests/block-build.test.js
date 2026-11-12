@@ -514,5 +514,27 @@ describe('block:build', () => {
       expect(fs.existsSync(path.join(proj, 'dist/outsystems/theme.css'))).toBe(false);
       expect(fs.readFileSync(path.join(proj, 'dist/outsystems/verify.html'), 'utf-8')).not.toContain('./theme.css');
     });
+
+    it('warns about shared files that import each other, and still builds a working bundle of functions', () => {
+      writeShared('a.js', `import { b } from './b.js';\nexport function a() { return 'a' + b(); }\n`);
+      writeShared('b.js', `import { a } from './a.js';\nexport function b() { return 'b'; }\nexport function ab() { return a(); }\n`);
+      writeIndex('price-tag', `import { ab } from '../../shared/b.js';\nexport function render() { return ab(); }\n`);
+
+      const out = execSync(`node "${CLI}" block:build`, { cwd: proj, encoding: 'utf-8' });
+      expect(out).toMatch(/components\/shared\/b\.js and a\.js import each other/);
+
+      const w = loadBundle(['Bistro-Shared.js', 'PriceTag/PriceTag.js']);
+      const el = { innerHTML: '' };
+      w.Bistro.render('PriceTag', el, {});
+      expect(el.innerHTML).toBe('ab');
+    });
+
+    it('does not warn about a cycle when shared imports form a chain', () => {
+      writeSharedComponentJs(proj);
+      writeShared('Base.js', `import { Component } from './Component.js';\nexport class Base extends Component {}\n`);
+      writeComponent(proj, 'order-chat');
+      const out = execSync(`node "${CLI}" block:build`, { cwd: proj, encoding: 'utf-8' });
+      expect(out).not.toContain('import each other');
+    });
   });
 });

@@ -133,29 +133,37 @@ function siblingImports(src) {
 
 // Dependency order: a shared file comes after the shared files it imports
 // (a `class Modal extends Component` needs Component defined first). Files
-// with no imports keep their alphabetical order. A cycle is left in
-// alphabetical order; function declarations still hoist across it.
+// with no imports keep their alphabetical order. A cycle has no right order:
+// it is reported, and its files keep the order the walk reached them in.
+// Function declarations still hoist across it; a class used while the file
+// loads (`extends`, a static field) does not, same as with real ES modules.
 function orderSharedFiles(sharedFiles, sources) {
   const ordered = [];
+  const cycles = [];
   const state = new Map(); // file -> 'visiting' | 'done'
   const visit = (file) => {
     if (state.get(file)) return;
     state.set(file, 'visiting');
     for (const dep of siblingImports(sources.get(file))) {
-      if (sources.has(dep)) visit(dep);
+      if (state.get(dep) === 'visiting') cycles.push([file, dep]);
+      else if (sources.has(dep)) visit(dep);
     }
     state.set(file, 'done');
     ordered.push(file);
   };
   for (const f of sharedFiles) visit(f);
-  return ordered;
+  return { ordered, cycles };
 }
 
 function buildSharedBundle(namespace, projectPath, sharedFiles) {
   const warnings = [];
   const sources = new Map(sharedFiles.map((f) => [f, fs.readFileSync(path.join(projectPath, 'components/shared', f), 'utf-8')]));
   const assignments = [];
-  const bodies = orderSharedFiles(sharedFiles, sources).map((file) => {
+  const { ordered, cycles } = orderSharedFiles(sharedFiles, sources);
+  for (const [from, to] of cycles) {
+    warnings.push(`components/shared/${from} and ${to} import each other (directly or through other shared files). They're bundled in the order ${ordered.filter((f) => f === from || f === to).join(', ')}; a function is fine either way, but a class the other file uses while loading (extends, a static field) fails if it's defined later.`);
+  }
+  const bodies = ordered.map((file) => {
     let raw = sources.get(file);
     for (const dep of siblingImports(raw)) {
       if (!sources.has(dep)) warnings.push(`components/shared/${file} imports ./${dep}, which is not in components/shared/ — the bundle will fail where it's used.`);

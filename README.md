@@ -206,6 +206,14 @@ a folder named `shared` or `component` (which would overwrite `window.<Namespace
 `.Component`) is reported and that component is skipped. A `flowmo.namespace` that isn't a valid
 JavaScript identifier stops the build.
 
+Two shared files that import each other are bundled anyway, with a warning: a function used across
+the cycle works, but a class the other file uses while loading (`extends`, a static field) fails if
+it's defined later, as it would with real ES modules.
+
+`block:build` reads imports and exports line by line, not with a JavaScript parser. Inside a
+multi-line string (a template literal), don't start a line with `import` or `export`: it would be
+treated as a real import or export, and could be removed from the string or stop the build.
+
 **Demo data:** add `components/business/<name>/demo.js` (default export) so a Block can render a
 real layout before any aggregate is wired up. Without it, that component's demo data is `{}`.
 
