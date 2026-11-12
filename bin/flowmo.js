@@ -58,6 +58,11 @@ ${picocolors.bold('Commands:')}
                                      ${picocolors.dim('--ticket')}      STRBBL-XXX reference
                                      ${picocolors.dim('--title')}       Display title
 
+  ${picocolors.cyan('block:build')}                             Bundle components/business/**/index.js into an OutSystems-pasteable
+                                     Script resource, plus a cascade-accurate verify.html and paste README
+                                     into dist/outsystems/. Reads { "flowmo": { "namespace", "iconLibrary" } }
+                                     from package.json.
+
 ${picocolors.bold('Examples:')}
   flowmo db:setup
   flowmo db:seed
@@ -75,6 +80,7 @@ ${picocolors.bold('Examples:')}
   flowmo mentor:prompt
   flowmo mentor:prompt database/sql/GetProjects.advance.sql --output mentor-prompt.md
   flowmo schema:verify database/fresh-entities.json
+  flowmo block:build
 `;
 
 async function run() {
@@ -94,6 +100,7 @@ async function run() {
   const { schemaPull } = await import('../src/commands/schema-pull.js');
   const { mentorPrompt } = await import('../src/commands/mentor-prompt.js');
   const { schemaVerify } = await import('../src/commands/schema-verify.js');
+  const { blockBuild } = await import('../src/commands/block-build.js');
 
   const commands = {
     'db:setup': () => dbSetup(),
@@ -107,6 +114,7 @@ async function run() {
     'schema:pull': () => schemaPull(args),
     'mentor:prompt': () => mentorPrompt(args),
     'schema:verify': () => schemaVerify(args),
+    'block:build': () => blockBuild(),
   };
 
   if (!commands[command]) {
