@@ -85,10 +85,10 @@ function collectExportNames(src) {
 // narrowly-scoped regex pass, not a real bundler, so the "no dependency
 // graph to resolve" property that makes the export-strip-and-wrap transform
 // possible survives. Only named imports pointing into components/shared/
-// are handled; anything else (a cross-component import, a default import)
-// is untouched and will surface as a SyntaxError in the output, same as
-// today — that's still a real signal that the component broke the "zero
-// cross-imports" rule in business-components.md.
+// are handled; any other import (a cross-component import, a default
+// import) breaks the "zero cross-imports" rule in business-components.md,
+// and buildComponents() reports it and skips that component rather than
+// emitting a bundle that fails with a SyntaxError in the browser.
 //
 // One exception: Component is exposed directly
 // as window.<NS>.Component, not window.<NS>.Shared.Component — its load
@@ -96,19 +96,74 @@ function collectExportNames(src) {
 // that shouldn't be buried a level deep in the general utility namespace.
 const SHARED_IMPORT_RE = /^import\s*\{\s*([^}]+?)\s*\}\s*from\s*['"][^'"]*\/shared\/([^'"]+)['"]\s*;?\s*$/gm;
 
-function rewriteSharedImports(src, namespace) {
-  return src.replace(SHARED_IMPORT_RE, (_, names, file) => {
-    if (file === 'Component.js' && names.trim() === 'Component') {
-      return `const Component = window.${namespace}.Component;`;
-    }
-    return `const { ${names} } = window.${namespace}.Shared;`;
+// `a, b as c` -> [{ name: 'a', local: 'a' }, { name: 'b', local: 'c' }]
+function parseImportNames(names) {
+  return names.split(',').map((s) => s.trim()).filter(Boolean).map((s) => {
+    const [name, local] = s.split(/\s+as\s+/);
+    return { name: name.trim(), local: (local ?? name).trim() };
   });
 }
 
+function rewriteSharedImports(src, namespace) {
+  return src.replace(SHARED_IMPORT_RE, (_, names, file) => {
+    const lines = [];
+    const rest = [];
+    for (const { name, local } of parseImportNames(names)) {
+      if (file === 'Component.js' && name === 'Component') {
+        lines.push(`const ${local} = window.${namespace}.Component;`);
+      } else {
+        rest.push(name === local ? name : `${name}: ${local}`);
+      }
+    }
+    if (rest.length) lines.push(`const { ${rest.join(', ')} } = window.${namespace}.Shared;`);
+    return lines.join('\n');
+  });
+}
+
+// Shared files are concatenated into one scope, so an import of a sibling
+// shared file (`import { esc } from './esc.js'`) is already satisfied there:
+// drop it, and emit the imported file first. Left in place, it is a
+// SyntaxError that takes down the whole shared bundle, and every component
+// with it.
+const SIBLING_IMPORT_RE = /^import\s*\{[^}]*\}\s*from\s*['"]\.\/([^'"]+)['"]\s*;?[ \t]*\r?$\n?/gm;
+
+function siblingImports(src) {
+  return [...src.matchAll(SIBLING_IMPORT_RE)].map((m) => m[1]);
+}
+
+// Dependency order: a shared file comes after the shared files it imports
+// (a `class Modal extends Component` needs Component defined first). Files
+// with no imports keep their alphabetical order. A cycle is left in
+// alphabetical order; function declarations still hoist across it.
+function orderSharedFiles(sharedFiles, sources) {
+  const ordered = [];
+  const state = new Map(); // file -> 'visiting' | 'done'
+  const visit = (file) => {
+    if (state.get(file)) return;
+    state.set(file, 'visiting');
+    for (const dep of siblingImports(sources.get(file))) {
+      if (sources.has(dep)) visit(dep);
+    }
+    state.set(file, 'done');
+    ordered.push(file);
+  };
+  for (const f of sharedFiles) visit(f);
+  return ordered;
+}
+
 function buildSharedBundle(namespace, projectPath, sharedFiles) {
+  const warnings = [];
+  const sources = new Map(sharedFiles.map((f) => [f, fs.readFileSync(path.join(projectPath, 'components/shared', f), 'utf-8')]));
   const assignments = [];
-  const bodies = sharedFiles.map((file) => {
-    const raw = fs.readFileSync(path.join(projectPath, 'components/shared', file), 'utf-8');
+  const bodies = orderSharedFiles(sharedFiles, sources).map((file) => {
+    let raw = sources.get(file);
+    for (const dep of siblingImports(raw)) {
+      if (!sources.has(dep)) warnings.push(`components/shared/${file} imports ./${dep}, which is not in components/shared/ — the bundle will fail where it's used.`);
+    }
+    raw = raw.replace(SIBLING_IMPORT_RE, '');
+    if (/^import\s/m.test(raw)) {
+      throw new Error(`components/shared/${file} has an import that isn't a named import of another components/shared/ file. Shared files are bundled into one classic script, so they can only import each other.`);
+    }
     const names = collectExportNames(raw);
     for (const n of names) {
       if (file === 'Component.js' && n === 'Component') {
@@ -161,7 +216,7 @@ window.${namespace}.render = function (name, el, props) {
 };
 `;
 
-  return versionBanner(body) + body;
+  return { js: versionBanner(body) + body, warnings };
 }
 
 // The class contract (Phase 2) coexists with today's
@@ -169,6 +224,11 @@ window.${namespace}.render = function (name, el, props) {
 // components atomically. So the gate has to detect BOTH
 // shapes, not just recognize one.
 const CLASS_EXTENDS_RE = /class\s+(\w+)\s+extends\s+Component\b/;
+
+// window.<NS>.<ComponentName> holds a class component, so a component named
+// after one of the bundle's own PascalCase properties would overwrite it.
+// (instances / render / demoData are camelCase and can't collide.)
+const RESERVED_NAMES = new Set(['Shared', 'Component']);
 
 function onReadySnippet(namespace, c) {
   if (c.kind === 'class') {
@@ -187,8 +247,23 @@ async function buildComponents(namespace, components) {
   const built = [];
 
   for (const c of components) {
+    const where = `components/business/${c.dirName}/index.js`;
+    if (RESERVED_NAMES.has(c.componentName)) {
+      warnings.push(`${where}: the name "${c.componentName}" would overwrite window.${namespace}.${c.componentName}, which the bundle uses itself — skipped. Rename the folder.`);
+      continue;
+    }
+
     const raw = fs.readFileSync(c.jsFile, 'utf-8');
+    if (/^export\s+default\b/m.test(raw)) {
+      warnings.push(`${where} uses "export default", which can't be bundled — skipped. Use "export function render" or "export class ${c.componentName} extends Component".`);
+      continue;
+    }
     const rewritten = rewriteSharedImports(raw, namespace);
+    const leftover = rewritten.match(/^import\s.*$/m);
+    if (leftover) {
+      warnings.push(`${where} has an import block:build can't bundle (only named imports from components/shared/ are allowed) — skipped: ${leftover[0].trim()}`);
+      continue;
+    }
     const stripped = rewritten.replace(/^export /gm, '');
 
     const classMatch = stripped.match(CLASS_EXTENDS_RE);
@@ -227,8 +302,8 @@ async function buildComponents(namespace, components) {
 
    Paste into its own Script resource, then from this Block's OnReady:
      ${mountSnippet.split('\n').join('\n     ')}
-   Also paste ${namespace}-Shared.js (any order for this component${kind === 'class' ? '' : ', but'} —
-   it defines ${kind === 'class' ? 'the shared Component base class this extends, which MUST load first (parse-time dependency — see that file\'s own header)' : 'the render() dispatcher this call uses'}.
+   ${namespace}-Shared.js must be its own Script resource, attached ABOVE this one:
+   ${kind === 'class' ? 'it defines the Component base class this extends, and `extends` runs as soon as\n   this script loads, so with Shared below it this script fails to load ("Class\n   extends value undefined").' : 'it defines the render() dispatcher the OnReady call uses, and any shared\n   helpers this component imports.'}
    Exposes:
      ${exposesLine}
    With no explicit props, ${kind === 'class' ? 'the OnReady snippet above falls back to' : 'render() falls back to'} the demo
@@ -254,7 +329,7 @@ window.${namespace}.demoData.${c.componentName} = ${JSON.stringify(demoData, nul
   return { built, warnings };
 }
 
-function buildCssManifest(components, screens) {
+function buildCssManifest(components, screens, hasTheme) {
   // Cascade order per architectural-heuristics.md §1: Block CSS -> outsystems-ui.css -> Theme -> Screen.
   // Each entry: sourceRel (copy from), distRel (dist/outsystems-relative, both for the copy
   // destination and for verify.html's <link>), paste (does the README list it as a paste target).
@@ -270,7 +345,7 @@ function buildCssManifest(components, screens) {
     }
   }
   list.push({ sourceRel: 'theme/outsystems-ui.css', distRel: null, dest: null, paste: false }); // never copied/pasted — source-only, for cascade parity
-  list.push({ sourceRel: 'theme/theme.css', distRel: 'theme.css', dest: 'the module **Theme**', paste: true });
+  if (hasTheme) list.push({ sourceRel: 'theme/theme.css', distRel: 'theme.css', dest: 'the module **Theme**', paste: true });
   for (const s of screens) {
     list.push({
       sourceRel: s.cssFile ? `screens/${s.screenName}/index.css` : null,
@@ -298,7 +373,12 @@ function verifyMountCall(namespace, byName, name) {
 function buildVerifyHtml({ projectPath, namespace, iconLibrary, css, components, hasInteractions }) {
   const shellPath = path.join(projectPath, 'theme/verify-shell.html');
   const byName = new Map(components.map((c) => [c.componentName, c]));
-  const linkTags = css.map((s) => `  <link rel="stylesheet" href="${s.distRel ? './' + s.distRel : '/' + s.sourceRel}">`).join('\n');
+  // A source-only stylesheet (outsystems-ui.css) is linked relative to
+  // dist/outsystems/verify.html, so it loads whether the file is opened from
+  // disk or through the dev server. A root-relative "/theme/..." only works
+  // through the dev server; opened from disk it silently loads nothing, and
+  // the cascade check passes without the OSUI layer it exists to test.
+  const linkTags = css.map((s) => `  <link rel="stylesheet" href="${s.distRel ? './' + s.distRel : '../../' + s.sourceRel}">`).join('\n');
   const scriptTags = [
     `  <script src="./${namespace}-Shared.js"></script>`,
     ...components.map((c) => `  <script src="./${c.componentName}/${c.componentName}.js"></script>`),
@@ -416,7 +496,7 @@ Each component's folder holds only that component's files — working on \`${com
 
 | Paste this file | Into |
 |---|---|
-| \`dist/outsystems/${namespace}-Shared.js\` | its own module **Script** resource — paste this one too, any order relative to the components above |
+| \`dist/outsystems/${namespace}-Shared.js\` | its own module **Script** resource, attached **above** every component's Script resource — components read it as they load, and a \`class\` component fails to load without it |
 ${hasInteractions ? `| \`dist/outsystems/${namespace}-Interactions.js\` | a second module **Script** resource — see the note below |\n` : ''}${pasteRows.join('\n')}
 
 \`theme/outsystems-ui.css\` is **not** copied or pasted — it's already in every module. It's loaded
@@ -425,7 +505,8 @@ cascade order.
 
 ## Steps
 
-1. **Add the Script resources.** ${namespace}-Shared.js, then each component's own \`<Name>.js\`.${hasInteractions ? ` Add
+1. **Add the Script resources.** ${namespace}-Shared.js first, then each component's own \`<Name>.js\`
+   below it (Script resources load in the order they're attached).${hasInteractions ? ` Add
    \`${namespace}-Interactions.js\` too — it's a demo aid, not the final implementation: each
    interaction it drives (accordion, sortable table, expandable rows, …) should eventually become a
    real platform widget (Accordion, Table, Sidebar, If) wired to screen actions, at which point this
@@ -459,6 +540,11 @@ ${warnings.length ? `## Warnings\n\n${warnings.map((w) => `- ${w}`).join('\n')}\
 export async function blockBuild() {
   const projectPath = process.cwd();
   const { namespace, iconLibrary } = readFlowmoConfig(projectPath);
+  // The namespace becomes a `window.<Namespace>` global in every generated
+  // file. A derived one is already sanitised; a configured one is not.
+  if (!/^[A-Za-z_$][\w$]*$/.test(namespace)) {
+    throw new Error(`flowmo.namespace "${namespace}" in package.json isn't a valid JavaScript identifier (letters, digits, _ or $, not starting with a digit). It becomes window.<namespace> in the bundle.`);
+  }
 
   const components = discoverComponents(projectPath);
   if (components.length === 0) {
@@ -476,15 +562,18 @@ export async function blockBuild() {
     return;
   }
 
-  const css = buildCssManifest(built, screens);
+  const hasTheme = fs.existsSync(path.join(projectPath, 'theme/theme.css'));
+  if (!hasTheme) warnings.push('theme/theme.css not found — no Theme stylesheet to paste, and verify.html runs without one.');
+  const css = buildCssManifest(built, screens, hasTheme);
   const interactionsSrc = path.join(projectPath, 'scripts/prototype-interactions.js');
   const hasInteractions = fs.existsSync(interactionsSrc);
 
   const verify = buildVerifyHtml({ projectPath, namespace, iconLibrary, css, components: built, hasInteractions });
   warnings.push(...verify.warnings);
 
+  const { js: sharedJs, warnings: sharedWarnings } = buildSharedBundle(namespace, projectPath, sharedFiles);
+  warnings.push(...sharedWarnings);
   const readme = buildReadme({ namespace, css, components: built, hasInteractions, verify, warnings });
-  const sharedJs = buildSharedBundle(namespace, projectPath, sharedFiles);
 
   const outDir = path.join(projectPath, 'dist/outsystems');
   fs.mkdirSync(outDir, { recursive: true });

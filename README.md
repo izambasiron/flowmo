@@ -195,8 +195,16 @@ component imports it the normal way — `import { esc } from '../../shared/esc.j
 `block:build` rewrites that import to a global reference in the bundled output; local dev keeps the
 real ES import. `Component` itself is exposed directly as `window.<Namespace>.Component`, not
 nested under `.Shared` — `class X extends Component` evaluates at parse time, so
-`<Namespace>-Shared.js` must be pasted (and load) before any component that extends it, and
+`<Namespace>-Shared.js` must be attached above every component's Script resource, and
 `block:build` always emits it as the one Script resource every component depends on.
+
+Shared files may import each other with a relative named import (`import { esc } from
+'./esc.js';`): they're concatenated into one scope, so `block:build` drops those imports and emits
+each file after the files it imports. Any other import in a shared file stops the build. In a
+component, an import that isn't a named import from `components/shared/`, an `export default`, or
+a folder named `shared` or `component` (which would overwrite `window.<Namespace>.Shared` /
+`.Component`) is reported and that component is skipped. A `flowmo.namespace` that isn't a valid
+JavaScript identifier stops the build.
 
 **Demo data:** add `components/business/<name>/demo.js` (default export) so a Block can render a
 real layout before any aggregate is wired up. Without it, that component's demo data is `{}`.

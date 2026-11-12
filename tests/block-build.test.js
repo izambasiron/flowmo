@@ -377,4 +377,142 @@ describe('block:build', () => {
       expect(js).toContain('return WeirdName;');
     });
   });
+
+  // ── Review fixes ─────────────────────────────────────────────────────
+
+  describe('imports, load order and guards', () => {
+    // Loads the generated scripts in the order the README says to attach them
+    // (Shared first), the way a page loads classic Script resources.
+    function loadBundle(names) {
+      const outDir = path.join(proj, 'dist/outsystems');
+      const sources = names.map((f) => fs.readFileSync(path.join(outDir, f), 'utf-8'));
+      const sandbox = {};
+      sandbox.window = sandbox;
+      sandbox.document = { getElementById: () => ({ innerHTML: '' }), querySelector: () => ({ innerHTML: '' }) };
+      // eslint-disable-next-line no-new-func
+      return new Function('window', 'document', `${sources.join('\n')}\nreturn window;`)(sandbox, sandbox.document);
+    }
+
+    function writeShared(name, src) {
+      fs.mkdirSync(path.join(proj, 'components/shared'), { recursive: true });
+      fs.writeFileSync(path.join(proj, 'components/shared', name), src);
+    }
+
+    function writeIndex(name, src) {
+      const dir = path.join(proj, 'components/business', name);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'index.js'), src);
+    }
+
+    beforeEach(() => {
+      fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'bistro' }));
+    });
+
+    it('drops imports between shared files and emits the imported file first, so the bundle loads', () => {
+      writeSharedComponentJs(proj);
+      writeShared('esc.js', `export function esc(s) { return String(s).replace(/&/g, '&amp;'); }\n`);
+      writeShared('format.js', `import { esc } from './esc.js';\nexport function money(n) { return '$' + esc(n.toFixed(2)); }\n`);
+      // Base.js sorts before Component.js but extends it: it must still come after.
+      writeShared('Base.js', `import { Component } from './Component.js';\nexport class Base extends Component {}\n`);
+      writeIndex('price-tag', `import { money } from '../../shared/format.js';\nexport function render(props) { return '<b>' + money(props.total) + '</b>'; }\n`);
+
+      execSync(`node "${CLI}" block:build`, { cwd: proj, stdio: 'pipe' });
+
+      const shared = fs.readFileSync(path.join(proj, 'dist/outsystems/Bistro-Shared.js'), 'utf-8');
+      expect(shared).not.toMatch(/^\s*import\s/m);
+      expect(shared.indexOf('class Component')).toBeLessThan(shared.indexOf('class Base'));
+
+      const w = loadBundle(['Bistro-Shared.js', 'PriceTag/PriceTag.js']);
+      expect(w.Bistro.Shared.Base).toBeTypeOf('function');
+      const el = { innerHTML: '' };
+      w.Bistro.render('PriceTag', el, { total: 12.5 });
+      expect(el.innerHTML).toBe('<b>$12.50</b>');
+    });
+
+    it('fails clearly when a shared file imports something outside components/shared/', () => {
+      writeShared('util.js', `import { x } from '../business/order-rail/index.js';\nexport const y = 1;\n`);
+      writeComponent(proj, 'order-rail');
+      expect(() => execSync(`node "${CLI}" block:build`, { cwd: proj, stdio: 'pipe' })).toThrow(/components\/shared\/util\.js has an import/);
+    });
+
+    it('splits Component from other names imported alongside it, and handles "as" aliases', () => {
+      writeShared('Component.js', COMPONENT_JS_SOURCE + `export const VERSION = 1;\n`);
+      writeShared('esc.js', `export function esc(s) { return String(s).replace(/</g, '&lt;'); }\n`);
+      writeIndex('order-rail', `import { Component } from '../../shared/Component.js';\nimport { esc as e } from '../../shared/esc.js';\nexport class OrderRail extends Component {\n  render() { this.target.innerHTML = e(this.props.label); }\n}\n`);
+      writeIndex('order-chat', `import { Component, VERSION } from '../../shared/Component.js';\nexport class OrderChat extends Component {\n  render() { this.target.innerHTML = 'v' + VERSION; }\n}\n`);
+
+      execSync(`node "${CLI}" block:build`, { cwd: proj, stdio: 'pipe' });
+
+      const chat = fs.readFileSync(path.join(proj, 'dist/outsystems/OrderChat/OrderChat.js'), 'utf-8');
+      expect(chat).toContain('const Component = window.Bistro.Component;');
+      expect(chat).toContain('const { VERSION } = window.Bistro.Shared;');
+      const rail = fs.readFileSync(path.join(proj, 'dist/outsystems/OrderRail/OrderRail.js'), 'utf-8');
+      expect(rail).toContain('const { esc: e } = window.Bistro.Shared;');
+
+      const w = loadBundle(['Bistro-Shared.js', 'OrderChat/OrderChat.js', 'OrderRail/OrderRail.js']);
+      const a = { innerHTML: '' };
+      new w.Bistro.OrderChat({ target: a }).mount();
+      expect(a.innerHTML).toBe('v1');
+      const b = { innerHTML: '' };
+      new w.Bistro.OrderRail({ target: b, props: { label: '<x>' } }).mount();
+      expect(b.innerHTML).toBe('&lt;x>');
+    });
+
+    it('says to attach the shared script above the components, never "any order"', () => {
+      writeSharedComponentJs(proj);
+      writeClassComponent(proj, 'order-rail', 'OrderRail');
+      writeComponent(proj, 'order-chat');
+
+      execSync(`node "${CLI}" block:build`, { cwd: proj, stdio: 'pipe' });
+
+      const outDir = path.join(proj, 'dist/outsystems');
+      for (const f of ['README.md', 'OrderRail/OrderRail.js', 'OrderChat/OrderChat.js']) {
+        expect(fs.readFileSync(path.join(outDir, f), 'utf-8')).not.toContain('any order');
+      }
+      expect(fs.readFileSync(path.join(outDir, 'README.md'), 'utf-8')).toContain('attached **above** every component');
+      expect(fs.readFileSync(path.join(outDir, 'OrderRail/OrderRail.js'), 'utf-8')).toContain('attached ABOVE this one');
+    });
+
+    it('skips, with a warning, a component that uses export default, a non-shared import, or a reserved name', () => {
+      writeSharedComponentJs(proj);
+      writeIndex('defaulted', `export default function render() { return ''; }\n`);
+      writeIndex('cross', `import { render as other } from '../order-chat/index.js';\nexport function render() { return other(); }\n`);
+      writeClassComponent(proj, 'shared', 'Shared');
+      writeComponent(proj, 'order-chat');
+
+      const out = execSync(`node "${CLI}" block:build`, { cwd: proj, encoding: 'utf-8' });
+      expect(out).toContain('components/business/defaulted/index.js uses "export default"');
+      expect(out).toContain("components/business/cross/index.js has an import block:build can't bundle");
+      expect(out).toContain('the name "Shared" would overwrite window.Bistro.Shared');
+
+      const outDir = path.join(proj, 'dist/outsystems');
+      expect(fs.existsSync(path.join(outDir, 'Defaulted'))).toBe(false);
+      expect(fs.existsSync(path.join(outDir, 'Cross'))).toBe(false);
+      expect(fs.existsSync(path.join(outDir, 'Shared'))).toBe(false);
+      expect(fs.existsSync(path.join(outDir, 'OrderChat/OrderChat.js'))).toBe(true);
+    });
+
+    it('rejects a configured namespace that is not a JavaScript identifier', () => {
+      fs.writeFileSync(path.join(proj, 'package.json'), JSON.stringify({ name: 'bistro', flowmo: { namespace: 'my-app' } }));
+      writeComponent(proj, 'order-chat');
+      expect(() => execSync(`node "${CLI}" block:build`, { cwd: proj, stdio: 'pipe' })).toThrow(/isn't a valid JavaScript identifier/);
+    });
+
+    it('links outsystems-ui.css relative to verify.html, so it loads when opened from disk', () => {
+      writeComponent(proj, 'order-chat');
+      execSync(`node "${CLI}" block:build`, { cwd: proj, stdio: 'pipe' });
+      const verify = fs.readFileSync(path.join(proj, 'dist/outsystems/verify.html'), 'utf-8');
+      expect(verify).toContain('href="../../theme/outsystems-ui.css"');
+      expect(verify).not.toContain('href="/theme/');
+    });
+
+    it('builds without theme/theme.css and warns instead of crashing', () => {
+      fs.rmSync(path.join(proj, 'theme/theme.css'));
+      writeComponent(proj, 'order-chat');
+      const out = execSync(`node "${CLI}" block:build`, { cwd: proj, encoding: 'utf-8' });
+      expect(out).toContain('theme/theme.css not found');
+      expect(fs.existsSync(path.join(proj, 'dist/outsystems/theme.css'))).toBe(false);
+      expect(fs.readFileSync(path.join(proj, 'dist/outsystems/verify.html'), 'utf-8')).not.toContain('./theme.css');
+    });
+  });
 });
