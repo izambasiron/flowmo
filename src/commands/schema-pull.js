@@ -66,7 +66,7 @@ export async function schemaPull(rawArgs = []) {
 
   const owned = entities.filter((e) => !e.isReferenced);
   const dependencies = entities.filter((e) => e.isReferenced);
-  const dependencyLibs = [...new Set(dependencies.map((e) => e.producerAssetName).filter(Boolean))];
+  const dependencyLibs = [...new Set(dependencies.map((e) => e.producerAssetName).filter(Boolean))].sort();
 
   let written = null;
   if (!dryRun) {

@@ -103,6 +103,29 @@ export function topoSort(entities) {
   return { sorted, skippedRefs };
 }
 
+const byName = (a, b) => {
+  const x = toSnakeCase(a.name);
+  const y = toSnakeCase(b.name);
+  if (x !== y) return x < y ? -1 : 1;
+  return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+};
+
+/**
+ * Puts entities and their attributes into a canonical (alphabetical) order so
+ * the same model always produces byte-identical DDL, whatever order the source
+ * (context_entities pages, the Forge component) happened to return it in. That
+ * keeps diffs of a re-pulled schema.os.sql down to real changes. Table order
+ * is still parents-before-children (topoSort), with ties broken alphabetically
+ * because topoSort walks entities in the order given here. Plain code-unit
+ * comparison, not localeCompare, so it can't vary by machine locale.
+ * Returns copies; the input is not mutated.
+ */
+export function canonicalOrder(entities) {
+  return [...entities]
+    .sort(byName)
+    .map((e) => ({ ...e, attrs: [...e.attrs].sort(byName) }));
+}
+
 /**
  * Generates PostgreSQL CREATE TABLE DDL from a list of entities.
  * Tables are emitted in topological order (parents before children).
@@ -122,7 +145,7 @@ export function topoSort(entities) {
  * @returns {string} DDL suitable for PGlite exec
  */
 export function generateSchema(entities) {
-  const { sorted, skippedRefs } = topoSort(entities);
+  const { sorted, skippedRefs } = topoSort(canonicalOrder(entities));
 
   // Table/column names are always double-quoted rather than special-cased
   // per reserved word (e.g. "user", "order", "trigger") — quoting is always
