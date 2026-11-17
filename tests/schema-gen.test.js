@@ -31,6 +31,37 @@ function restaurantEntities() {
 }
 
 describe('generateSchema', () => {
+  it('emits identical DDL whatever order entities and attributes arrive in', () => {
+    const { entities } = transformContextEntities(mixed);
+    const shuffled = [...entities].reverse().map((e) => ({ ...e, attrs: [...e.attrs].reverse() }));
+    expect(generateSchema(shuffled)).toBe(generateSchema(entities));
+  });
+
+  it('lists columns alphabetically, and breaks table-order ties alphabetically', () => {
+    const entities = [
+      { key: 'z', name: 'Zebra', attrs: [
+        { name: 'Name', dataType: 'Text', isMandatory: false, isKey: false },
+        { name: 'Id', dataType: 'Long Integer', isMandatory: true, isKey: true },
+        { name: 'Age', dataType: 'Integer', isMandatory: false, isKey: false },
+      ] },
+      { key: 'a', name: 'Ant', attrs: [{ name: 'Id', dataType: 'Long Integer', isMandatory: true, isKey: true }] },
+    ];
+    const ddl = generateSchema(entities);
+    expect(ddl.indexOf('CREATE TABLE "ant"')).toBeLessThan(ddl.indexOf('CREATE TABLE "zebra"'));
+    const zebra = ddl.slice(ddl.indexOf('CREATE TABLE "zebra"'));
+    expect(zebra.indexOf('"age"')).toBeLessThan(zebra.indexOf('"id"'));
+    expect(zebra.indexOf('"id"')).toBeLessThan(zebra.indexOf('"name"'));
+  });
+
+  it('does not mutate the entities passed in', () => {
+    const entities = [{ key: 'z', name: 'Zebra', attrs: [
+      { name: 'Name', dataType: 'Text', isMandatory: false, isKey: false },
+      { name: 'Id', dataType: 'Long Integer', isMandatory: true, isKey: true },
+    ] }];
+    generateSchema(entities);
+    expect(entities[0].attrs.map((a) => a.name)).toEqual(['Name', 'Id']);
+  });
+
   it('emits the referenced table before the referencing table (topo order)', () => {
     const { entities } = transformContextEntities(mixed);
     const ddl = generateSchema(entities);
